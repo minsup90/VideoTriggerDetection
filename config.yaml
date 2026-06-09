@@ -1,0 +1,41 @@
+ai_classification:
+  condition_type: and
+  enabled: false
+  model_path: ''
+  threshold: 0.8
+buffer:
+  size: 5
+file_storage:
+  filename_format: yyyyMMdd_hhmmss_000.bmp
+  retention_days: 30
+  save_dir: saved_images
+ftp:
+  enabled: true
+  host: ''
+  password: ''
+  port: 21
+  remote_dir: ''
+  timeout: 30
+  username: ''
+gui:
+  show_tray_icon: true
+  window_height: 720
+  window_title: Video Trigger Detection
+  window_width: 1280
+image_gathering:
+  frame_save_duration: 3
+  max_frames: 300
+image_quality:
+  optical_flow_threshold: 0.5
+  tenengrade_threshold: 100.0
+logging:
+  log_dir: logs
+  log_level: INFO
+  max_file_size_mb: 10
+  retention_days: 30
+rtsp:
+  reconnect_interval: 5
+  url: rtsp://localhost:553/live
+template_matching:
+  patterns: []
+  require_all_patterns: true
