@@ -204,9 +204,31 @@ class FTPManager:
 class FileStorageManager:
     """파일 저장 관리 클래스"""
 
-    def __init__(self, save_dir: str = "saved_images", retention_days: int = 30):
+    def __init__(
+        self,
+        save_dir: str = "saved_images",
+        retention_days: int = 30,
+        equipment_no: str = "EQ01",
+        mount: str = "Mount",
+        image_format: str = "BMP",
+        quality: int = 90,
+        resize_enabled: bool = False,
+        resize_width: int = 0,
+        resize_height: int = 0,
+        keep_aspect_ratio: bool = True,
+        filename_format: str = "{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}"
+    ):
         self.save_dir = Path(save_dir)
         self.retention_days = retention_days
+        self.equipment_no = equipment_no or "EQ01"
+        self.mount = mount or "Mount"
+        self.image_format = (image_format or "BMP").upper()
+        self.quality = max(10, min(90, int(quality)))
+        self.resize_enabled = resize_enabled
+        self.resize_width = max(0, int(resize_width or 0))
+        self.resize_height = max(0, int(resize_height or 0))
+        self.keep_aspect_ratio = keep_aspect_ratio
+        self.filename_format = filename_format or "{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}"
         self.lock = threading.Lock()
 
         # 저장 디렉토리 생성
@@ -218,6 +240,70 @@ class FileStorageManager:
         date_dir = self.save_dir / today
         date_dir.mkdir(parents=True, exist_ok=True)
         return date_dir
+
+    def _extension(self) -> str:
+        if self.image_format == "JPG" or self.image_format == "JPEG":
+            return "jpg"
+        if self.image_format == "PNG":
+            return "png"
+        return "bmp"
+
+    def _build_filename(self, date_dir: Path) -> str:
+        """설비No.Mount.yyyyMMdd_hhmmss_000 형태의 파일명 생성"""
+        now = datetime.now()
+        ext = self._extension()
+        context = {
+            'equipment_no': self.equipment_no,
+            'mount': self.mount,
+            'yyyyMMdd': now.strftime('%Y%m%d'),
+            'hhmmss': now.strftime('%H%M%S'),
+            'ext': ext,
+        }
+
+        seq = 0
+        while seq < 1000:
+            context['seq'] = seq
+            try:
+                filename = self.filename_format.format(**context)
+            except Exception:
+                filename = f"{self.equipment_no}.{self.mount}.{context['yyyyMMdd']}_{context['hhmmss']}_{seq:03d}.{ext}"
+            if not Path(filename).suffix:
+                filename = f"{filename}.{ext}"
+            if not (date_dir / filename).exists():
+                return filename
+            seq += 1
+        return f"{self.equipment_no}.{self.mount}.{context['yyyyMMdd']}_{context['hhmmss']}_{now.microsecond:06d}.{ext}"
+
+    def _resize_image(self, image):
+        if not self.resize_enabled or (self.resize_width <= 0 and self.resize_height <= 0):
+            return image
+
+        import cv2
+        h, w = image.shape[:2]
+        target_w = self.resize_width if self.resize_width > 0 else w
+        target_h = self.resize_height if self.resize_height > 0 else h
+
+        if self.keep_aspect_ratio:
+            if self.resize_width > 0 and self.resize_height > 0:
+                scale = min(self.resize_width / w, self.resize_height / h)
+            elif self.resize_width > 0:
+                scale = self.resize_width / w
+            else:
+                scale = self.resize_height / h
+            target_w = max(1, int(w * scale))
+            target_h = max(1, int(h * scale))
+
+        return cv2.resize(image, (target_w, target_h), interpolation=cv2.INTER_AREA)
+
+    def _imwrite_params(self) -> list:
+        import cv2
+        if self.image_format in ("JPG", "JPEG"):
+            return [cv2.IMWRITE_JPEG_QUALITY, self.quality]
+        if self.image_format == "PNG":
+            # UI 입력 10~90을 PNG 압축 1~9로 매핑한다. 높을수록 더 압축한다.
+            png_compression = max(1, min(9, round(self.quality / 10)))
+            return [cv2.IMWRITE_PNG_COMPRESSION, png_compression]
+        return []
 
     def save_image(self, image, filename: str = None) -> Optional[str]:
         """
@@ -232,15 +318,16 @@ class FileStorageManager:
             date_dir = self.get_date_dir()
 
             if filename is None:
-                # 자동 파일명 생성: yyyyMMdd_hhmmss_000.bmp
-                now = datetime.now()
-                filename = now.strftime("%Y%m%d_%H%M%S_000.bmp")
+                filename = self._build_filename(date_dir)
 
             filepath = date_dir / filename
+            output_image = self._resize_image(image)
 
             # 이미지 저장
             import cv2
-            cv2.imwrite(str(filepath), image)
+            ok = cv2.imwrite(str(filepath), output_image, self._imwrite_params())
+            if not ok:
+                raise RuntimeError(f"cv2.imwrite 실패: {filepath}")
 
             return str(filepath)
 
@@ -249,11 +336,11 @@ class FileStorageManager:
             return None
 
     def cleanup_old_files(self):
-        """보관 기간이 지난 파일 삭제"""
+        """보관 기간이 지난 YYYYMMDD 날짜 폴더 삭제"""
         if not self.save_dir.exists():
             return
 
-        cutoff_date = datetime.now().timestamp() - (self.retention_days * 24 * 60 * 60)
+        cutoff_date = datetime.now().date().toordinal() - self.retention_days
 
         with self.lock:
             for date_dir in self.save_dir.iterdir():
@@ -261,14 +348,16 @@ class FileStorageManager:
                     continue
 
                 try:
-                    # 디렉토리 수정 시간 확인
-                    dir_mtime = date_dir.stat().st_mtime
-                    if dir_mtime < cutoff_date:
-                        # 디렉토리 내 모든 파일 삭제
+                    try:
+                        folder_date = datetime.strptime(date_dir.name, "%Y%m%d").date().toordinal()
+                    except ValueError:
+                        # 날짜 폴더가 아니면 삭제하지 않음
+                        continue
+
+                    if folder_date < cutoff_date:
                         for file in date_dir.iterdir():
                             if file.is_file():
                                 file.unlink()
-                        # 디렉토리 삭제
                         date_dir.rmdir()
                         print(f"오래된 파일 삭제: {date_dir}")
 
