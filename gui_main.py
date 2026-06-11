@@ -1061,3 +1061,11 @@ class CameraWidget(QWidget):
             self.status_label.setText("상태: 연결됨")
         elif state == StreamState.DISCONNECTED:
             self.status_label.setText("상태: 연결 끊김")
+
+    def on_ftp_upload(self, filepath: str, success: bool, error: Optional[str]):
+        self.logger.log_ftp_upload(filepath, success, error)
+
+    def shutdown(self):
+        self.stop_detection()
+        self.ftp_manager.disconnect()
+
