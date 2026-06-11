@@ -1069,15 +1069,10 @@ class CameraWidget(QWidget):
         self.stop_detection()
         self.ftp_manager.disconnect()
 
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.config_manager = ConfigManager()
         self.config = self.config_manager.get_config()
         self.config_manager.ensure_directories()
-1
-2
-3
-3
-4
+        
