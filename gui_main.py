@@ -1076,3 +1076,8 @@ class MainWindow(QMainWindow):
         self.config_manager = ConfigManager()
         self.config = self.config_manager.get_config()
         self.config_manager.ensure_directories()
+1
+2
+3
+3
+4
