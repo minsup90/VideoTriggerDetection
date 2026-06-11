@@ -21,7 +21,7 @@ class FTPManager:
         password: str = "",
         remote_dir: str = "/",
         timeout: int = 30,
-        enabled: bool = True
+        enabled: bool = False
     ):
         self.host = host
         self.port = port
