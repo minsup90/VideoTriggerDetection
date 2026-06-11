@@ -1072,3 +1072,7 @@ class CameraWidget(QWidget):
 
 class MainWindow(QMainWindow):
     def __init__(self):
+        super().__init__()
+        self.config_manager = ConfigManager()
+        self.config = self.config_manager.get_config()
+        self.config_manager.ensure_directories()
