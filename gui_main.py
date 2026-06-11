@@ -990,3 +990,52 @@ class CameraWidget(QWidget):
                     date_str = datetime.now().strftime("%Y%m%d")
                     remote_subdir = f"{self.camera.name}/{date_str}"
                     self.ftp_manager.upload_file_async(filepath, remote_subdir)
+
+    def _frame_changed(self, frame) -> bool:
+        if frame is None:
+            return False
+        try:
+            small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA)
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
+            if self.last_health_frame is None:
+                self.last_health_frame = gray
+                self.last_health_change_time = time.time()
+                return True
+            diff = float(np.mean(cv2.absdiff(gray, self.last_health_frame)))
+            self.last_health_frame = gray
+            if diff > self.camera.healthcheck.freeze_diff_threshold:
+                self.last_health_change_time = time.time()
+                return True
+            return False
+        except Exception as exc:
+            self.log_error(f"HealthCheck 프레임 비교 오류: {exc}")
+            return True
+
+    def check_health(self):
+        hc = self.camera.healthcheck
+        if not hc.enabled or not self.is_running:
+            return
+        now = time.time()
+        last_ts = self.rtsp_stream.get_last_frame_timestamp()
+        no_frame_timeout = (not last_ts) or (now - last_ts > hc.timeout_sec)
+        current_frame = self.main_image_label.current_image
+        self._frame_changed(current_frame)
+        freeze_timeout = now - self.last_health_change_time > hc.timeout_sec
+
+        if not no_frame_timeout and not freeze_timeout:
+            self.consecutive_health_failures = 0
+            self.health_label.setText("Health: 정상")
+            return
+
+        reason = "프레임 수신 없음" if no_frame_timeout else "영상 변화 없음"
+        self.health_label.setText(f"Health: 이상 감지 - {reason}")
+        self.log_error(f"HealthCheck 이상 감지: {reason}")
+        self.consecutive_health_failures += 1
+
+        if hc.restart_stream:
+            self.restart_stream()
+            self.last_health_change_time = now
+
+        if hc.restart_app and self.consecutive_health_failures >= 3 and self.app_restart_callback:
+            self.log_error("재연결 반복 실패: 프로그램 재시작 요청")
+            self.app_restart_callback(self.camera, hc)
