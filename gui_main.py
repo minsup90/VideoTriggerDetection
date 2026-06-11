@@ -1039,3 +1039,25 @@ class CameraWidget(QWidget):
         if hc.restart_app and self.consecutive_health_failures >= 3 and self.app_restart_callback:
             self.log_error("재연결 반복 실패: 프로그램 재시작 요청")
             self.app_restart_callback(self.camera, hc)
+
+    def restart_stream(self):
+        now = time.time()
+        self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
+        self.stream_restart_history.append(now)
+        self.health_label.setText("Health: RTSP 재연결 중")
+        self.log_info("RTSP 재연결 시도")
+        self.rtsp_stream.restart()
+
+    def cleanup_old_files(self):
+        self.file_storage.cleanup_old_files()
+
+    def on_rtsp_error(self, error_msg: str):
+        self.log_error(f"RTSP 오류: {error_msg}")
+        self.status_label.setText(f"상태: 오류 - {error_msg}")
+
+    def on_rtsp_state_change(self, state: StreamState):
+        self.logger.log_rtsp_status(state == StreamState.CONNECTED, self.rtsp_stream.get_fps())
+        if state == StreamState.CONNECTED:
+            self.status_label.setText("상태: 연결됨")
+        elif state == StreamState.DISCONNECTED:
+            self.status_label.setText("상태: 연결 끊김")
