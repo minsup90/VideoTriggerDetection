@@ -1077,3 +1077,4 @@ class MainWindow(QMainWindow):
         self.config_manager.ensure_directories()
 
 
+여기 Logge
