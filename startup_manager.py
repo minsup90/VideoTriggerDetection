@@ -1,4 +1,4 @@
-"""Windows 자동 실행 등록 관리."""
+"""Windows 자동 실행 등록 관리.1"""
 import os
 import platform
 import subprocess
