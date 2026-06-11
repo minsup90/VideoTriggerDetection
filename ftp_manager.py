@@ -11,7 +11,7 @@ import threading
 
 
 class FTPManager:
-    """FTP 전송 관리 클래스"""
+    """FTP 전송 관리 클래스1"""
 
     def __init__(
         self,
