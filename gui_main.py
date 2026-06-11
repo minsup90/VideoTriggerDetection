@@ -1068,3 +1068,6 @@ class CameraWidget(QWidget):
     def shutdown(self):
         self.stop_detection()
         self.ftp_manager.disconnect()
+
+
+class MainWindow(QMainWindow):
