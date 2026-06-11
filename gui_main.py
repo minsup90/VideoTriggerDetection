@@ -938,3 +938,55 @@ class CameraWidget(QWidget):
         self.log_info("설정 저장됨")
         QMessageBox.information(self, "성공", "설정이 저장되었습니다.")
 
+    def update_display(self):
+        fps = self.rtsp_stream.get_fps()
+        self.fps_label.setText(f"FPS: {fps:.1f}")
+        self.buffer_label.setText(f"버퍼: {self.trigger_buffer.size()}/{self.camera.buffer_size}")
+        if self.is_running and self.selected_image is None:
+            frame_info = self.rtsp_stream.get_latest_frame()
+            if frame_info:
+                frame = frame_info.frame
+                matched_rects = []
+                if self.template_matcher.get_template_count() > 0:
+                    matched, results = self.template_matcher.match_all(frame, require_all=self.camera.require_all_patterns)
+                    for result in results:
+                        if result.matched:
+                            template_size = self.template_matcher.get_template_size(result.pattern_index)
+                            if template_size:
+                                template_w, template_h = template_size
+                                matched_rects.append((result.location[0], result.location[1], template_w, template_h, result.score))
+                    if matched:
+                        if not self.image_save_done:
+                            if not self.trigger_buffer.is_full():
+                                self.trigger_buffer.add_frame(frame)
+                            else:
+                                self.process_buffer()
+                                self.image_save_done = True
+                        self.background_frame_cnt = 0
+                    else:
+                        self.background_frame_cnt += 1
+                        if self.background_frame_cnt > 5 and self.image_save_done:
+                            self.image_save_done = False
+                            self.trigger_buffer.clear()
+                roi_rects = []
+                template_rects = []
+                if self.show_roi_regions:
+                    for pattern in self.camera.patterns:
+                        roi_rects.append((pattern.roi.x, pattern.roi.y, pattern.roi.width, pattern.roi.height))
+                self.main_image_label.set_roi_rects(roi_rects)
+                self.main_image_label.set_template_rects(template_rects)
+                self.main_image_label.set_matched_rects(matched_rects)
+                self.main_image_label.set_image(frame)
+
+    def process_buffer(self):
+        best_image = self.trigger_buffer.get_best_frame()
+        if best_image is not None:
+            tenengrade_score = TenengradeAnalyzer.calculate(best_image)
+            filepath = self.file_storage.save_image(best_image)
+            if filepath:
+                self.logger.log_image_saved(filepath, tenengrade_score)
+                self.log_info(f"이미지 저장: {filepath}")
+                if self.ftp_manager.is_enabled():
+                    date_str = datetime.now().strftime("%Y%m%d")
+                    remote_subdir = f"{self.camera.name}/{date_str}"
+                    self.ftp_manager.upload_file_async(filepath, remote_subdir)
