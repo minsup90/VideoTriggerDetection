@@ -130,3 +130,6 @@ def main():
     main_window.show()
     tray_icon = TrayIcon(main_window)
     sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
