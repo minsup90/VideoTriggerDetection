@@ -5,6 +5,7 @@ RTSP 비디오 스트림을 수신하고 관리하는 모듈
 import cv2
 import threading
 import time
+from collections import deque
 from queue import Queue, Empty
 from typing import Optional, Callable
 from dataclasses import dataclass
@@ -40,7 +41,9 @@ class RTSPStream:
         self.thread: Optional[threading.Thread] = None
         self.frame_number = 0
         self.last_frame_time = 0
+        self.last_frame_timestamp = 0.0
         self.fps = 0.0
+        self.fps_timestamps = deque(maxlen=120)
         self.error_callback: Optional[Callable[[str], None]] = None
         self.state_callback: Optional[Callable[[StreamState], None]] = None
 
@@ -84,6 +87,10 @@ class RTSPStream:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
+            self.last_frame_time = 0
+            self.last_frame_timestamp = 0.0
+            self.fps = 0.0
+            self.fps_timestamps.clear()
             self._notify_state(StreamState.CONNECTED)
             return True
 
@@ -95,13 +102,16 @@ class RTSPStream:
     def disconnect(self):
         """RTSP 스트림 연결 해제"""
         self.running = False
-        if self.thread:
+        if self.thread and threading.current_thread() != self.thread:
             self.thread.join(timeout=2.0)
 
         if self.cap:
             self.cap.release()
             self.cap = None
 
+        self.fps = 0.0
+        self.last_frame_timestamp = 0.0
+        self.fps_timestamps.clear()
         self._notify_state(StreamState.DISCONNECTED)
 
     def start(self):
@@ -116,7 +126,7 @@ class RTSPStream:
     def stop(self):
         """스트림 수신 중지"""
         self.running = False
-        if self.thread:
+        if self.thread and threading.current_thread() != self.thread:
             self.thread.join(timeout=2.0)
 
     def _capture_loop(self):
@@ -137,12 +147,17 @@ class RTSPStream:
                     time.sleep(self.reconnect_interval)
                     continue
 
-                # FPS 계산
+                # FPS 계산: 순간값 대신 최근 timestamp 기반 이동평균 사용
                 current_time = time.time()
-                if self.last_frame_time > 0:
-                    dt = current_time - self.last_frame_time
-                    if dt > 0:
-                        self.fps = 1.0 / dt
+                self.last_frame_timestamp = current_time
+                self.fps_timestamps.append(current_time)
+                while self.fps_timestamps and current_time - self.fps_timestamps[0] > 3.0:
+                    self.fps_timestamps.popleft()
+                if len(self.fps_timestamps) >= 2:
+                    elapsed = self.fps_timestamps[-1] - self.fps_timestamps[0]
+                    self.fps = (len(self.fps_timestamps) - 1) / elapsed if elapsed > 0 else 0.0
+                else:
+                    self.fps = 0.0
                 self.last_frame_time = current_time
 
                 # 프레임 번호 증가
@@ -191,8 +206,20 @@ class RTSPStream:
         return self.state == StreamState.CONNECTED
 
     def get_fps(self) -> float:
-        """현재 FPS 반환"""
+        """현재 FPS 반환. 최근 5초 이상 프레임이 없으면 0으로 표시."""
+        if self.last_frame_timestamp and time.time() - self.last_frame_timestamp > 5.0:
+            return 0.0
         return self.fps
+
+    def get_last_frame_timestamp(self) -> float:
+        """마지막 프레임 수신 timestamp 반환"""
+        return self.last_frame_timestamp
+
+    def restart(self):
+        """스트림 재시작"""
+        self.stop()
+        self.disconnect()
+        self.start()
 
     def get_frame_number(self) -> int:
         """현재 프레임 번호 반환"""

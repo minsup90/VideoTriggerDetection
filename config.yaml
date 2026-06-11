@@ -1,41 +1,219 @@
-ai_classification:
-  condition_type: and
-  enabled: false
-  model_path: ''
-  threshold: 0.8
-buffer:
-  size: 5
-file_storage:
-  filename_format: yyyyMMdd_hhmmss_000.bmp
-  retention_days: 30
-  save_dir: saved_images
-ftp:
+system:
+  auto_start_enabled: false
+  auto_start_method: task_scheduler
+  auto_run_detection: false
+cameras:
+- id: cam1
+  name: Cam1
   enabled: true
-  host: ''
-  password: ''
-  port: 21
-  remote_dir: ''
-  timeout: 30
-  username: ''
-gui:
-  show_tray_icon: true
-  window_height: 720
-  window_title: Video Trigger Detection
-  window_width: 1280
-image_gathering:
-  frame_save_duration: 3
-  max_frames: 300
-image_quality:
-  optical_flow_threshold: 0.5
-  tenengrade_threshold: 100.0
+  rtsp:
+    url: rtsp://localhost:553/live
+    reconnect_interval: 5
+  ai_classification:
+    model_path: ''
+    enabled: false
+    threshold: 0.8
+    condition_type: and
+  image_quality:
+    tenengrade_threshold: 100.0
+    optical_flow_threshold: 0.5
+  template_matching:
+    patterns: []
+    require_all_patterns: true
+  image_gathering:
+    frame_save_duration: 3
+    max_frames: 300
+  buffer:
+    size: 5
+  ftp:
+    enabled: true
+    host: ''
+    port: 21
+    username: ''
+    password: ''
+    remote_dir: ''
+    timeout: 30
+  file_storage:
+    save_dir: saved_images/Cam1
+    retention_days: 30
+    equipment_no: EQ01
+    mount: Mount
+    image_format: BMP
+    quality: 90
+    resize_enabled: false
+    resize_width: 0
+    resize_height: 0
+    keep_aspect_ratio: true
+    filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
+  healthcheck:
+    enabled: true
+    timeout_sec: 10
+    check_interval_sec: 1
+    freeze_diff_threshold: 1.0
+    restart_stream: true
+    restart_app: true
+    restart_limit_enabled: true
+    max_restart_per_hour: 5
+- id: cam2
+  name: Cam2
+  enabled: false
+  rtsp:
+    url: ''
+    reconnect_interval: 5
+  ai_classification:
+    model_path: ''
+    enabled: false
+    threshold: 0.8
+    condition_type: and
+  image_quality:
+    tenengrade_threshold: 100.0
+    optical_flow_threshold: 0.5
+  template_matching:
+    patterns: []
+    require_all_patterns: true
+  image_gathering:
+    frame_save_duration: 3
+    max_frames: 300
+  buffer:
+    size: 5
+  ftp:
+    enabled: true
+    host: ''
+    port: 21
+    username: ''
+    password: ''
+    remote_dir: ''
+    timeout: 30
+  file_storage:
+    save_dir: saved_images/Cam2
+    retention_days: 30
+    equipment_no: EQ01
+    mount: Mount
+    image_format: BMP
+    quality: 90
+    resize_enabled: false
+    resize_width: 0
+    resize_height: 0
+    keep_aspect_ratio: true
+    filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
+  healthcheck:
+    enabled: true
+    timeout_sec: 10
+    check_interval_sec: 1
+    freeze_diff_threshold: 1.0
+    restart_stream: true
+    restart_app: true
+    restart_limit_enabled: true
+    max_restart_per_hour: 5
+- id: cam3
+  name: Cam3
+  enabled: false
+  rtsp:
+    url: ''
+    reconnect_interval: 5
+  ai_classification:
+    model_path: ''
+    enabled: false
+    threshold: 0.8
+    condition_type: and
+  image_quality:
+    tenengrade_threshold: 100.0
+    optical_flow_threshold: 0.5
+  template_matching:
+    patterns: []
+    require_all_patterns: true
+  image_gathering:
+    frame_save_duration: 3
+    max_frames: 300
+  buffer:
+    size: 5
+  ftp:
+    enabled: true
+    host: ''
+    port: 21
+    username: ''
+    password: ''
+    remote_dir: ''
+    timeout: 30
+  file_storage:
+    save_dir: saved_images/Cam3
+    retention_days: 30
+    equipment_no: EQ01
+    mount: Mount
+    image_format: BMP
+    quality: 90
+    resize_enabled: false
+    resize_width: 0
+    resize_height: 0
+    keep_aspect_ratio: true
+    filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
+  healthcheck:
+    enabled: true
+    timeout_sec: 10
+    check_interval_sec: 1
+    freeze_diff_threshold: 1.0
+    restart_stream: true
+    restart_app: true
+    restart_limit_enabled: true
+    max_restart_per_hour: 5
+- id: cam4
+  name: Cam4
+  enabled: false
+  rtsp:
+    url: ''
+    reconnect_interval: 5
+  ai_classification:
+    model_path: ''
+    enabled: false
+    threshold: 0.8
+    condition_type: and
+  image_quality:
+    tenengrade_threshold: 100.0
+    optical_flow_threshold: 0.5
+  template_matching:
+    patterns: []
+    require_all_patterns: true
+  image_gathering:
+    frame_save_duration: 3
+    max_frames: 300
+  buffer:
+    size: 5
+  ftp:
+    enabled: true
+    host: ''
+    port: 21
+    username: ''
+    password: ''
+    remote_dir: ''
+    timeout: 30
+  file_storage:
+    save_dir: saved_images/Cam4
+    retention_days: 30
+    equipment_no: EQ01
+    mount: Mount
+    image_format: BMP
+    quality: 90
+    resize_enabled: false
+    resize_width: 0
+    resize_height: 0
+    keep_aspect_ratio: true
+    filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
+  healthcheck:
+    enabled: true
+    timeout_sec: 10
+    check_interval_sec: 1
+    freeze_diff_threshold: 1.0
+    restart_stream: true
+    restart_app: true
+    restart_limit_enabled: true
+    max_restart_per_hour: 5
 logging:
   log_dir: logs
   log_level: INFO
-  max_file_size_mb: 10
   retention_days: 30
-rtsp:
-  reconnect_interval: 5
-  url: rtsp://localhost:553/live
-template_matching:
-  patterns: []
-  require_all_patterns: true
+  max_file_size_mb: 10
+gui:
+  window_title: Video Trigger Detection
+  window_width: 1280
+  window_height: 720
+  show_tray_icon: true
