@@ -1,0 +1,34 @@
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller/build outputs
+build/
+dist/
+*.spec.bak
+
+# Windows/native binary outputs
+*.ico
+*.exe
+*.dll
+*.pyd
+*.so
+*.dylib
+*.bin
+
+# Generated/runtime data
+logs/
+saved_images/
+gathered_images/
+templates/
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+*.log
