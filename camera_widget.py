@@ -1,5 +1,6 @@
 """Per-camera GUI runtime widget for VideoTriggerDetection."""
 
+import shutil
 import threading
 import time
 from datetime import datetime
@@ -496,12 +497,35 @@ class CameraWidget(QWidget):
     def start_image_gathering(self):
         if self.is_gathering:
             return
+        self.clear_gathered_image_files()
         self.is_gathering = True
         self.gathered_images = []
+        self.selected_image = None
+        self.show_thumbnails()
         self.gather_btn.setEnabled(False)
         self.gather_btn.setText("수집중...")
         thread = threading.Thread(target=self._gather_images, daemon=True)
         thread.start()
+
+    def clear_gathered_image_files(self):
+        """이미지 수집 버튼으로 저장된 이전 수집 이미지만 삭제한다."""
+        gather_root = Path("gathered_images") / self.camera.name
+        if not gather_root.exists():
+            return
+        deleted_count = 0
+        try:
+            for item in gather_root.iterdir():
+                if item.is_dir():
+                    file_count = sum(1 for child in item.rglob("*") if child.is_file())
+                    shutil.rmtree(item)
+                    deleted_count += file_count
+                elif item.is_file():
+                    item.unlink()
+                    deleted_count += 1
+            if deleted_count:
+                self.log_info(f"기존 수집 이미지 삭제 완료: {gather_root}, 총 {deleted_count}개 파일")
+        except OSError as exc:
+            self.log_error(f"기존 수집 이미지 삭제 실패: {exc}")
 
     def _gather_images(self):
         self.frame_buffer.clear()
