@@ -153,6 +153,6 @@ video_trigger_detection/
 
 ## 개발 정보
 
-- 작성일: 2026-03-06
-- 개발자: Roo Development Team
+- 작성일: 2026-06-11
+- 개발자: Kim Minsup
 - 버전: 1.0.0
