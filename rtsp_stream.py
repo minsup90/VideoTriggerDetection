@@ -43,6 +43,8 @@ class RTSPStream:
         self.frame_queue: Queue = Queue(maxsize=30)  # 최대 30프레임 버퍼
         self.running = False
         self.thread: Optional[threading.Thread] = None
+        self.thread_lock = threading.Lock()
+        self.thread_starting = False
         self.frame_number = 0
         self.last_frame_time = 0
         self.last_frame_timestamp = 0.0
@@ -136,20 +138,47 @@ class RTSPStream:
 
     def start(self):
         """스트림 수신 시작"""
-        if self.running:
-            return
+        with self.thread_lock:
+            if (
+                self.thread is not None
+                and (self.thread.is_alive() or self.thread_starting)
+            ):
+                return
 
-        self.restart_requested.clear()
-        self.running = True
-        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
-        self.thread.start()
+            self.restart_requested.clear()
+            self.running = True
+            thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.thread = thread
+            self.thread_starting = True
+
+        try:
+            thread.start()
+        except Exception:
+            with self.thread_lock:
+                if self.thread is thread:
+                    self.thread = None
+                    self.running = False
+                self.thread_starting = False
+            raise
+
+        with self.thread_lock:
+            if self.thread is thread:
+                self.thread_starting = False
 
     def stop(self):
         """스트림 수신 중지"""
         self.running = False
         self.restart_requested.set()
-        if self.thread and threading.current_thread() != self.thread:
-            self.thread.join(timeout=2.0)
+
+        with self.thread_lock:
+            thread = self.thread
+            thread_starting = self.thread_starting
+
+        if thread and not thread_starting and threading.current_thread() != thread:
+            thread.join(timeout=2.0)
+            with self.thread_lock:
+                if self.thread is thread and not thread.is_alive():
+                    self.thread = None
 
     def _release_capture(self):
         """캡처 리소스만 해제하고 수신 루프는 유지한다."""
@@ -183,65 +212,72 @@ class RTSPStream:
 
     def _capture_loop(self):
         """프레임 캡처 루프"""
-        while self.running:
-            if self._handle_restart_request():
-                continue
-
-            if self.state != StreamState.CONNECTED:
-                if not self.connect():
-                    self._sleep_reconnect_interval()
-                    continue
-
-            try:
+        current_thread = threading.current_thread()
+        try:
+            while self.running:
                 if self._handle_restart_request():
                     continue
 
-                # 프레임 읽기
-                ret, frame = self.cap.read()
+                if self.state != StreamState.CONNECTED:
+                    if not self.connect():
+                        self._sleep_reconnect_interval()
+                        continue
 
-                if not ret:
-                    self._notify_error("프레임 읽기 실패")
+                try:
+                    if self._handle_restart_request():
+                        continue
+
+                    # 프레임 읽기
+                    ret, frame = self.cap.read()
+
+                    if not ret:
+                        self._notify_error("프레임 읽기 실패")
+                        self._release_capture()
+                        self._notify_state(StreamState.ERROR)
+                        self._sleep_reconnect_interval()
+                        continue
+
+                    # FPS 계산: 순간값 대신 최근 timestamp 기반 이동평균 사용
+                    current_time = time.time()
+                    self.last_frame_timestamp = current_time
+                    self.fps_timestamps.append(current_time)
+                    while self.fps_timestamps and current_time - self.fps_timestamps[0] > 3.0:
+                        self.fps_timestamps.popleft()
+                    if len(self.fps_timestamps) >= 2:
+                        elapsed = self.fps_timestamps[-1] - self.fps_timestamps[0]
+                        self.fps = (len(self.fps_timestamps) - 1) / elapsed if elapsed > 0 else 0.0
+                    else:
+                        self.fps = 0.0
+                    self.last_frame_time = current_time
+
+                    # 프레임 번호 증가
+                    self.frame_number += 1
+
+                    # 큐에 프레임 추가 (오래된 프레임 제거)
+                    frame_info = FrameInfo(
+                        frame=frame,
+                        timestamp=current_time,
+                        frame_number=self.frame_number
+                    )
+
+                    if self.frame_queue.full():
+                        try:
+                            self.frame_queue.get_nowait()
+                        except Empty:
+                            pass
+
+                    self.frame_queue.put(frame_info)
+
+                except Exception as e:
+                    self._notify_error(f"프레임 캡처 중 오류: {str(e)}")
                     self._release_capture()
                     self._notify_state(StreamState.ERROR)
                     self._sleep_reconnect_interval()
-                    continue
-
-                # FPS 계산: 순간값 대신 최근 timestamp 기반 이동평균 사용
-                current_time = time.time()
-                self.last_frame_timestamp = current_time
-                self.fps_timestamps.append(current_time)
-                while self.fps_timestamps and current_time - self.fps_timestamps[0] > 3.0:
-                    self.fps_timestamps.popleft()
-                if len(self.fps_timestamps) >= 2:
-                    elapsed = self.fps_timestamps[-1] - self.fps_timestamps[0]
-                    self.fps = (len(self.fps_timestamps) - 1) / elapsed if elapsed > 0 else 0.0
-                else:
-                    self.fps = 0.0
-                self.last_frame_time = current_time
-
-                # 프레임 번호 증가
-                self.frame_number += 1
-
-                # 큐에 프레임 추가 (오래된 프레임 제거)
-                frame_info = FrameInfo(
-                    frame=frame,
-                    timestamp=current_time,
-                    frame_number=self.frame_number
-                )
-
-                if self.frame_queue.full():
-                    try:
-                        self.frame_queue.get_nowait()
-                    except Empty:
-                        pass
-
-                self.frame_queue.put(frame_info)
-
-            except Exception as e:
-                self._notify_error(f"프레임 캡처 중 오류: {str(e)}")
-                self._release_capture()
-                self._notify_state(StreamState.ERROR)
-                self._sleep_reconnect_interval()
+        finally:
+            with self.thread_lock:
+                if self.thread is current_thread:
+                    self.thread = None
+                    self.thread_starting = False
 
     def get_frame(self) -> Optional[FrameInfo]:
         """최신 프레임 반환"""
