@@ -290,6 +290,7 @@ class Config:
     window_width: int = 1280
     window_height: int = 720
     show_tray_icon: bool = True
+    start_minimized: bool = False
 
     def __post_init__(self):
         if not self.cameras:
@@ -355,7 +356,8 @@ class Config:
                 'window_title': self.window_title,
                 'window_width': self.window_width,
                 'window_height': self.window_height,
-                'show_tray_icon': self.show_tray_icon
+                'show_tray_icon': self.show_tray_icon,
+                'start_minimized': self.start_minimized
             }
         }
 
@@ -412,7 +414,8 @@ class Config:
             window_title=gui.get('window_title', 'Video Trigger Detection'),
             window_width=gui.get('window_width', 1280),
             window_height=gui.get('window_height', 720),
-            show_tray_icon=gui.get('show_tray_icon', True)
+            show_tray_icon=gui.get('show_tray_icon', True),
+            start_minimized=bool(gui.get('start_minimized', False))
         )
 
 

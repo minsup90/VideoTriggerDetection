@@ -9,6 +9,7 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
     QScrollArea, QGridLayout, QMessageBox, QComboBox, QSpinBox,
@@ -32,6 +33,7 @@ class CameraWidget(QWidget):
     rtsp_error_signal = pyqtSignal(str)
     rtsp_state_signal = pyqtSignal(object)
     log_append_signal = pyqtSignal(str)
+    image_gathered_signal = pyqtSignal(object, str, int, int)
 
     def __init__(self, camera_index: int, config_manager: ConfigManager, logger: Logger, app_restart_callback=None, parent=None):
         super().__init__(parent)
@@ -70,12 +72,21 @@ class CameraWidget(QWidget):
         self.image_save_done = False
         self.last_health_frame = None
         self.last_health_change_time = time.time()
+        self.health_started_at = time.time()
+        self.first_frame_received = False
+        self.last_stream_restart_at = 0.0
+        self.health_restart_in_progress = False
         self.consecutive_health_failures = 0
         self.stream_restart_history = []
+        self.last_rtsp_state_log = None
+        self.last_rtsp_state_log_at = 0.0
+        self.last_health_error_reason = None
+        self.last_health_error_logged_at = 0.0
 
         self.rtsp_error_signal.connect(self.on_rtsp_error)
         self.rtsp_state_signal.connect(self.on_rtsp_state_change)
         self.log_append_signal.connect(self.append_log_text)
+        self.image_gathered_signal.connect(self.on_image_gathered)
 
         self.init_ui()
         self.setup_callbacks()
@@ -164,6 +175,10 @@ class CameraWidget(QWidget):
         self.template_reg_btn = QPushButton("템플릿 등록")
         self.template_reg_btn.clicked.connect(self.show_template_registration)
         control_layout.addWidget(self.template_reg_btn)
+
+        self.live_view_btn = QPushButton("라이브 화면으로 돌아가기")
+        self.live_view_btn.clicked.connect(self.return_to_live_view)
+        control_layout.addWidget(self.live_view_btn)
         control_group.setLayout(control_layout)
         layout.addWidget(control_group)
 
@@ -353,6 +368,9 @@ class CameraWidget(QWidget):
             self.auto_run_check = QCheckBox("프로그램 시작 후 자동 START")
             self.auto_run_check.setChecked(self.config.auto_run_detection)
             system_layout.addWidget(self.auto_run_check)
+            self.start_minimized_check = QCheckBox("프로그램 시작 시 최소화/트레이로 숨김")
+            self.start_minimized_check.setChecked(self.config.start_minimized)
+            system_layout.addWidget(self.start_minimized_check)
             system_layout.addWidget(QLabel("자동 실행 방식:"))
             self.auto_start_method_combo = QComboBox()
             self.auto_start_method_combo.addItems(["task_scheduler", "registry"])
@@ -449,16 +467,26 @@ class CameraWidget(QWidget):
         self.start_stop_btn.setText("STOP")
         self.rtsp_stream.rtsp_url = self.camera.rtsp_url
         self.rtsp_stream.reconnect_interval = self.camera.rtsp_reconnect_interval
+        now = time.time()
+        self.health_started_at = now
+        self.first_frame_received = False
+        self.last_health_change_time = now
+        self.last_stream_restart_at = 0.0
+        self.health_restart_in_progress = False
+        self.last_health_frame = None
+        self.selected_image = None
+        self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
         self.rtsp_stream.start()
         self.log_info("검출 시작")
         self.status_label.setText("상태: 실행중")
-        self.last_health_change_time = time.time()
 
     def stop_detection(self):
         self.is_running = False
         self.start_stop_btn.setChecked(False)
         self.start_stop_btn.setText("START")
+        self.health_restart_in_progress = False
         self.rtsp_stream.stop()
+        self.main_image_label.set_status_message("")
         self.log_info("검출 중지")
         self.status_label.setText("상태: 대기중")
         self.health_label.setText("Health: 대기중")
@@ -467,6 +495,7 @@ class CameraWidget(QWidget):
         if self.is_gathering:
             return
         self.is_gathering = True
+        self.gathered_images = []
         self.gather_btn.setEnabled(False)
         self.gather_btn.setText("수집중...")
         thread = threading.Thread(target=self._gather_images, daemon=True)
@@ -474,7 +503,6 @@ class CameraWidget(QWidget):
 
     def _gather_images(self):
         self.frame_buffer.clear()
-        self.gathered_images = []
         duration = self.camera.frame_save_duration
         start_time = datetime.now()
         save_dir = Path("gathered_images") / self.camera.name / start_time.strftime("%Y%m%d_%H%M%S")
@@ -492,7 +520,11 @@ class CameraWidget(QWidget):
             elapsed = (datetime.now() - start_time).total_seconds()
             if elapsed >= duration or self.frame_buffer.is_full():
                 break
-        self.gathered_images = self.frame_buffer.get_frames()
+        frames = self.frame_buffer.get_frames()
+        self.image_gathered_signal.emit(frames, str(save_dir), frame_count, duration)
+
+    def on_image_gathered(self, frames: list, save_dir: str, frame_count: int, duration: int):
+        self.gathered_images = frames
         self.is_gathering = False
         self.gather_btn.setEnabled(True)
         self.gather_btn.setText("이미지 수집")
@@ -514,10 +546,27 @@ class CameraWidget(QWidget):
     def select_image(self, index: int):
         if 0 <= index < len(self.gathered_images):
             self.selected_image = self.gathered_images[index]['frame']
+            self.main_image_label.set_status_message("")
             self.main_image_label.set_image(self.selected_image)
             self.main_image_label.set_roi_rects([])
             self.main_image_label.set_template_rects([])
             self.log_info(f"이미지 선택됨: Index={index}")
+
+    def return_to_live_view(self):
+        self.selected_image = None
+        self.roi_btn.setChecked(False)
+        self.template_btn.setChecked(False)
+        self.main_image_label.set_draw_mode(None)
+        self.main_image_label.set_roi_rects([])
+        self.main_image_label.set_template_rects([])
+        if self.rtsp_stream.state == StreamState.CONNECTED:
+            self.main_image_label.set_status_message("")
+            frame_info = self.rtsp_stream.get_latest_frame()
+            if frame_info:
+                self.main_image_label.set_image(frame_info.frame)
+        else:
+            self.main_image_label.set_status_message("RTSP ERROR / 연결 끊김")
+        self.log_info("라이브 화면으로 복귀")
 
     def show_template_registration(self):
         if not self.gathered_images:
@@ -632,6 +681,7 @@ class CameraWidget(QWidget):
         if self.camera_index == 0:
             self.config.auto_start_enabled = self.auto_start_check.isChecked()
             self.config.auto_run_detection = self.auto_run_check.isChecked()
+            self.config.start_minimized = self.start_minimized_check.isChecked()
             self.config.auto_start_method = self.auto_start_method_combo.currentText()
             ok, msg = apply_startup(self.config.auto_start_enabled, self.config.auto_start_method)
             if ok:
@@ -663,6 +713,13 @@ class CameraWidget(QWidget):
         if self.is_running and self.selected_image is None:
             frame_info = self.rtsp_stream.get_latest_frame()
             if frame_info:
+                if not self.first_frame_received:
+                    self.first_frame_received = True
+                    self.consecutive_health_failures = 0
+                    self.health_restart_in_progress = False
+                    self.last_health_error_reason = None
+                    self.last_health_error_logged_at = 0.0
+                    self.main_image_label.set_status_message("")
                 frame = frame_info.frame
                 matched_rects = []
                 if self.template_matcher.get_template_count() > 0:
@@ -735,24 +792,44 @@ class CameraWidget(QWidget):
             return
         now = time.time()
         last_ts = self.rtsp_stream.get_last_frame_timestamp()
+        in_startup_grace = not self.first_frame_received and now - self.health_started_at < hc.timeout_sec
         no_frame_timeout = (not last_ts) or (now - last_ts > hc.timeout_sec)
-        current_frame = self.main_image_label.current_image
+        current_frame = None if self.selected_image is not None else self.main_image_label.current_image
         self._frame_changed(current_frame)
-        freeze_timeout = now - self.last_health_change_time > hc.timeout_sec
+        freeze_timeout = (
+            self.selected_image is None
+            and self.first_frame_received
+            and now - self.last_health_change_time > hc.timeout_sec
+        )
+
+        if in_startup_grace:
+            self.health_label.setText("Health: 첫 프레임 대기중")
+            return
 
         if not no_frame_timeout and not freeze_timeout:
             self.consecutive_health_failures = 0
             self.health_label.setText("Health: 정상")
+            self.last_health_error_reason = None
+            self.last_health_error_logged_at = 0.0
             return
 
         reason = "프레임 수신 없음" if no_frame_timeout else "영상 변화 없음"
         self.health_label.setText(f"Health: 이상 감지 - {reason}")
-        self.log_error(f"HealthCheck 이상 감지: {reason}")
-        self.consecutive_health_failures += 1
+        if self.last_health_error_reason != reason or now - self.last_health_error_logged_at >= 5.0:
+            self.log_error(f"HealthCheck 이상 감지: {reason}")
+            self.last_health_error_reason = reason
+            self.last_health_error_logged_at = now
 
-        if hc.restart_stream:
-            self.restart_stream()
-            self.last_health_change_time = now
+        reconnect_interval = self.camera.rtsp_reconnect_interval
+        reconnect_waiting = now - self.last_stream_restart_at < reconnect_interval
+        stream_reconnecting = self.rtsp_stream.state in (
+            StreamState.CONNECTING,
+            StreamState.DISCONNECTED,
+            StreamState.ERROR,
+        )
+        if hc.restart_stream and not self.health_restart_in_progress and not reconnect_waiting and not stream_reconnecting:
+            if self.restart_stream():
+                self.consecutive_health_failures += 1
 
         if hc.restart_app and self.consecutive_health_failures >= 3 and self.app_restart_callback:
             self.log_error("재연결 반복 실패: 프로그램 재시작 요청")
@@ -760,11 +837,20 @@ class CameraWidget(QWidget):
 
     def restart_stream(self):
         now = time.time()
+        if now - self.last_stream_restart_at < self.camera.rtsp_reconnect_interval:
+            return False
+        self.last_stream_restart_at = now
+        self.health_started_at = now
+        self.first_frame_received = False
+        self.last_health_change_time = now
+        self.last_health_frame = None
+        self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
         self.health_label.setText("Health: RTSP 재연결 중")
         self.log_info("RTSP 재연결 시도")
-        self.rtsp_stream.restart()
+        self.rtsp_stream.request_restart()
+        return True
 
     def cleanup_old_files(self):
         self.file_storage.cleanup_old_files()
@@ -774,11 +860,30 @@ class CameraWidget(QWidget):
         self.status_label.setText(f"상태: 오류 - {error_msg}")
 
     def on_rtsp_state_change(self, state: StreamState):
-        self.logger.log_rtsp_status(state == StreamState.CONNECTED, self.rtsp_stream.get_fps())
+        now = time.time()
+        should_log = not (
+            self.last_rtsp_state_log == state
+            and now - self.last_rtsp_state_log_at < 5.0
+        )
+        if should_log and state in (StreamState.CONNECTED, StreamState.DISCONNECTED):
+            self.logger.log_rtsp_status(state == StreamState.CONNECTED, self.rtsp_stream.get_fps())
+            self.last_rtsp_state_log = state
+            self.last_rtsp_state_log_at = now
         if state == StreamState.CONNECTED:
+            self.health_started_at = now
+            self.last_health_change_time = now
+            self.health_label.setText("Health: 첫 프레임 대기중")
+            self.main_image_label.set_status_message("")
             self.status_label.setText("상태: 연결됨")
         elif state == StreamState.DISCONNECTED:
+            self.main_image_label.set_status_message("RTSP 연결 끊김")
             self.status_label.setText("상태: 연결 끊김")
+        elif state == StreamState.CONNECTING:
+            self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
+            self.status_label.setText("상태: 연결 중")
+        elif state == StreamState.ERROR:
+            self.main_image_label.set_status_message("RTSP ERROR / 연결 실패")
+            self.status_label.setText("상태: 오류")
 
     def on_ftp_upload(self, filepath: str, success: bool, error: Optional[str]):
         self.logger.log_ftp_upload(filepath, success, error)
