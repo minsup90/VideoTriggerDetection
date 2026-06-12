@@ -1,9 +1,12 @@
 """Main application entry point and top-level window for VideoTriggerDetection."""
 
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
 
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QIcon
@@ -30,6 +33,7 @@ class MainWindow(QMainWindow):
         )
         self.camera_widgets = []
         self.app_restart_history = []
+        self.initial_visibility_applied = False
         self.init_ui()
         if self.config.auto_run_detection:
             QTimer.singleShot(1500, self.start_enabled_cameras)
@@ -43,6 +47,21 @@ class MainWindow(QMainWindow):
             widget = CameraWidget(index, self.config_manager, self.logger, self.restart_application, self)
             self.camera_widgets.append(widget)
             self.camera_tabs.addTab(widget, camera.name or f"Cam{index + 1}")
+
+    def apply_initial_visibility(self):
+        """프로그램 시작 직후 한 번만 최소화/숨김 옵션을 적용한다."""
+        if self.initial_visibility_applied:
+            return
+        self.initial_visibility_applied = True
+        if not self.config.start_minimized:
+            self.show()
+            return
+        if self.config.show_tray_icon:
+            self.hide()
+            self.logger.info("시작 최소화 옵션 적용: 트레이로 숨김")
+        else:
+            self.showMinimized()
+            self.logger.info("시작 최소화 옵션 적용: 작업 표시줄로 최소화")
 
     def start_enabled_cameras(self):
         for widget in self.camera_widgets:
@@ -127,8 +146,8 @@ def main():
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
     main_window = MainWindow()
-    main_window.show()
     tray_icon = TrayIcon(main_window)
+    QTimer.singleShot(0, main_window.apply_initial_visibility)
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

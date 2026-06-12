@@ -5,7 +5,7 @@ import numpy as np
 from typing import Optional, Tuple, List
 
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QMouseEvent
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QMouseEvent, QFont
 from PyQt5.QtWidgets import QLabel, QSizePolicy
 
 
@@ -32,6 +32,8 @@ class ImageLabel(QLabel):
         self.roi_callback = None
         self.template_callback = None
         self.image_clicked_callback = None
+        self.status_message = ""
+        self.status_color = QColor(255, 80, 80)
         self.setScaledContents(False)  # 자동 스케일링 비활성화
         self.setMinimumSize(240, 180)  # 창 축소/리사이즈 중에도 안전한 최소 크기
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -112,6 +114,12 @@ class ImageLabel(QLabel):
         """그리기 모드 설정 ('roi', 'template', None)"""
         self.draw_mode = mode
 
+    def set_status_message(self, message: str = "", color: Optional[QColor] = None):
+        """라이브 화면 위에 표시할 상태 메시지 설정"""
+        self.status_message = message or ""
+        self.status_color = color or QColor(255, 80, 80)
+        self.update()
+
     def set_roi_callback(self, callback):
         """ROI 콜백 설정"""
         self.roi_callback = callback
@@ -190,18 +198,37 @@ class ImageLabel(QLabel):
         """페인트 이벤트 - ROI/Template 그리기"""
         super().paintEvent(event)
 
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        def draw_status_message():
+            if not self.status_message:
+                return
+            painter.save()
+            painter.fillRect(self.rect(), QColor(0, 0, 0, 150))
+            painter.setPen(self.status_color)
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(18)
+            painter.setFont(font)
+            painter.drawText(self.rect(), Qt.AlignCenter | Qt.TextWordWrap, self.status_message)
+            painter.restore()
+
         if self.current_image is None:
+            draw_status_message()
+            painter.end()
             return
         geometry = self._pixmap_geometry()
         if geometry is None:
+            draw_status_message()
+            painter.end()
             return
 
         img_h, img_w = self.current_image.shape[:2]
         if img_w <= 0 or img_h <= 0:
+            draw_status_message()
+            painter.end()
             return
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
 
         # 이미지 좌표를 화면 좌표로 변환하는 함수
         def img_to_screen(img_x, img_y, img_w_rect, img_h_rect):
@@ -254,6 +281,9 @@ class ImageLabel(QLabel):
                 self.current_point.x() - self.start_point.x(),
                 self.current_point.y() - self.start_point.y()
             )
+
+        draw_status_message()
+        painter.end()
 
 
 class ThumbnailLabel(QLabel):
