@@ -77,6 +77,7 @@ class CameraWidget(QWidget):
         self.last_stream_restart_at = 0.0
         self.health_restart_in_progress = False
         self.consecutive_health_failures = 0
+        self.last_health_failure_counted_at = 0.0
         self.stream_restart_history = []
         self.last_rtsp_state_log = None
         self.last_rtsp_state_log_at = 0.0
@@ -473,6 +474,7 @@ class CameraWidget(QWidget):
         self.last_health_change_time = now
         self.last_stream_restart_at = 0.0
         self.health_restart_in_progress = False
+        self.last_health_failure_counted_at = 0.0
         self.last_health_frame = None
         self.selected_image = None
         self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
@@ -716,6 +718,7 @@ class CameraWidget(QWidget):
                 if not self.first_frame_received:
                     self.first_frame_received = True
                     self.consecutive_health_failures = 0
+                    self.last_health_failure_counted_at = 0.0
                     self.health_restart_in_progress = False
                     self.last_health_error_reason = None
                     self.last_health_error_logged_at = 0.0
@@ -808,6 +811,7 @@ class CameraWidget(QWidget):
 
         if not no_frame_timeout and not freeze_timeout:
             self.consecutive_health_failures = 0
+            self.last_health_failure_counted_at = 0.0
             self.health_label.setText("Health: 정상")
             self.last_health_error_reason = None
             self.last_health_error_logged_at = 0.0
@@ -827,13 +831,30 @@ class CameraWidget(QWidget):
             StreamState.DISCONNECTED,
             StreamState.ERROR,
         )
-        if hc.restart_stream and not self.health_restart_in_progress and not reconnect_waiting and not stream_reconnecting:
+
+        # RTSPStream._capture_loop가 CONNECTED가 아닐 때 자동 재연결을 담당한다.
+        # HealthCheck는 이미 재연결 중인 스트림을 다시 끊지 않고, 실패 주기만 집계해
+        # 반복 실패 시 프로그램 재시작 옵션이 동작하도록 한다.
+        if stream_reconnecting or self.health_restart_in_progress:
+            if not reconnect_waiting:
+                self._count_health_reconnect_failure(now)
+        elif hc.restart_stream and not reconnect_waiting:
+            # CONNECTED 상태인데 프레임/변화가 멈춘 경우에만 캡처 스레드에 강제 재연결을 요청한다.
             if self.restart_stream():
-                self.consecutive_health_failures += 1
+                self._count_health_reconnect_failure(now)
 
         if hc.restart_app and self.consecutive_health_failures >= 3 and self.app_restart_callback:
             self.log_error("재연결 반복 실패: 프로그램 재시작 요청")
             self.app_restart_callback(self.camera, hc)
+
+    def _count_health_reconnect_failure(self, now: float) -> bool:
+        """재연결 시도/대기 주기당 HealthCheck 실패를 최대 1회 집계한다."""
+        reconnect_interval = max(1, self.camera.rtsp_reconnect_interval)
+        if now - self.last_health_failure_counted_at < reconnect_interval:
+            return False
+        self.last_health_failure_counted_at = now
+        self.consecutive_health_failures += 1
+        return True
 
     def restart_stream(self):
         now = time.time()
@@ -871,7 +892,9 @@ class CameraWidget(QWidget):
             self.last_rtsp_state_log_at = now
         if state == StreamState.CONNECTED:
             self.health_started_at = now
+            self.first_frame_received = False
             self.last_health_change_time = now
+            self.last_health_frame = None
             self.health_label.setText("Health: 첫 프레임 대기중")
             self.main_image_label.set_status_message("")
             self.status_label.setText("상태: 연결됨")
