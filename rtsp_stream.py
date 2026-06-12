@@ -46,6 +46,10 @@ class RTSPStream:
         self.fps_timestamps = deque(maxlen=120)
         self.error_callback: Optional[Callable[[str], None]] = None
         self.state_callback: Optional[Callable[[StreamState], None]] = None
+        self.restart_requested = threading.Event()
+        self.last_error_message = ""
+        self.last_error_notified_at = 0.0
+        self.error_rate_limit_sec = 5.0
 
     def set_error_callback(self, callback: Callable[[str], None]):
         """에러 콜백 설정"""
@@ -57,12 +61,22 @@ class RTSPStream:
 
     def _notify_state(self, state: StreamState):
         """상태 변경 알림"""
+        if self.state == state:
+            return
         self.state = state
         if self.state_callback:
             self.state_callback(state)
 
     def _notify_error(self, error_msg: str):
         """에러 알림"""
+        now = time.time()
+        if (
+            error_msg == self.last_error_message
+            and now - self.last_error_notified_at < self.error_rate_limit_sec
+        ):
+            return
+        self.last_error_message = error_msg
+        self.last_error_notified_at = now
         if self.error_callback:
             self.error_callback(error_msg)
 
@@ -76,6 +90,7 @@ class RTSPStream:
 
             # 연결 확인
             if not self.cap.isOpened():
+                self._release_capture()
                 self._notify_error(f"RTSP 연결 실패: {self.rtsp_url}")
                 self._notify_state(StreamState.ERROR)
                 return False
@@ -95,6 +110,7 @@ class RTSPStream:
             return True
 
         except Exception as e:
+            self._release_capture()
             self._notify_error(f"RTSP 연결 중 오류 발생: {str(e)}")
             self._notify_state(StreamState.ERROR)
             return False
@@ -126,25 +142,63 @@ class RTSPStream:
     def stop(self):
         """스트림 수신 중지"""
         self.running = False
+        self.restart_requested.set()
         if self.thread and threading.current_thread() != self.thread:
             self.thread.join(timeout=2.0)
+
+    def _release_capture(self):
+        """캡처 리소스만 해제하고 수신 루프는 유지한다."""
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        self.fps = 0.0
+        self.last_frame_timestamp = 0.0
+        self.fps_timestamps.clear()
+
+    def request_restart(self):
+        """캡처 스레드에 비동기 재시작을 요청한다."""
+        self.restart_requested.set()
+
+    def _sleep_reconnect_interval(self):
+        """중지/재시작 요청에 빨리 반응하면서 재연결 간격만큼 대기한다."""
+        end_time = time.time() + self.reconnect_interval
+        while self.running and time.time() < end_time:
+            if self.restart_requested.is_set():
+                return
+            time.sleep(min(0.1, max(0.0, end_time - time.time())))
+
+    def _handle_restart_request(self):
+        """요청된 재시작을 캡처 스레드 내부에서 처리한다."""
+        if not self.restart_requested.is_set():
+            return False
+        self.restart_requested.clear()
+        self._release_capture()
+        self._notify_state(StreamState.DISCONNECTED)
+        return True
 
     def _capture_loop(self):
         """프레임 캡처 루프"""
         while self.running:
+            if self._handle_restart_request():
+                continue
+
             if self.state != StreamState.CONNECTED:
                 if not self.connect():
-                    time.sleep(self.reconnect_interval)
+                    self._sleep_reconnect_interval()
                     continue
 
             try:
+                if self._handle_restart_request():
+                    continue
+
                 # 프레임 읽기
                 ret, frame = self.cap.read()
 
                 if not ret:
                     self._notify_error("프레임 읽기 실패")
-                    self.disconnect()
-                    time.sleep(self.reconnect_interval)
+                    self._release_capture()
+                    self._notify_state(StreamState.ERROR)
+                    self._sleep_reconnect_interval()
                     continue
 
                 # FPS 계산: 순간값 대신 최근 timestamp 기반 이동평균 사용
@@ -180,8 +234,9 @@ class RTSPStream:
 
             except Exception as e:
                 self._notify_error(f"프레임 캡처 중 오류: {str(e)}")
-                self.disconnect()
-                time.sleep(self.reconnect_interval)
+                self._release_capture()
+                self._notify_state(StreamState.ERROR)
+                self._sleep_reconnect_interval()
 
     def get_frame(self) -> Optional[FrameInfo]:
         """최신 프레임 반환"""
@@ -217,9 +272,7 @@ class RTSPStream:
 
     def restart(self):
         """스트림 재시작"""
-        self.stop()
-        self.disconnect()
-        self.start()
+        self.request_restart()
 
     def get_frame_number(self) -> int:
         """현재 프레임 번호 반환"""
