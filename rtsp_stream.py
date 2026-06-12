@@ -44,6 +44,7 @@ class RTSPStream:
         self.running = False
         self.thread: Optional[threading.Thread] = None
         self.thread_lock = threading.Lock()
+        self.thread_starting = False
         self.frame_number = 0
         self.last_frame_time = 0
         self.last_frame_timestamp = 0.0
@@ -138,13 +139,31 @@ class RTSPStream:
     def start(self):
         """스트림 수신 시작"""
         with self.thread_lock:
-            if self.thread is not None and self.thread.is_alive():
+            if (
+                self.thread is not None
+                and (self.thread.is_alive() or self.thread_starting)
+            ):
                 return
 
             self.restart_requested.clear()
             self.running = True
-            self.thread = threading.Thread(target=self._capture_loop, daemon=True)
-            self.thread.start()
+            thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.thread = thread
+            self.thread_starting = True
+
+        try:
+            thread.start()
+        except Exception:
+            with self.thread_lock:
+                if self.thread is thread:
+                    self.thread = None
+                    self.running = False
+                self.thread_starting = False
+            raise
+
+        with self.thread_lock:
+            if self.thread is thread:
+                self.thread_starting = False
 
     def stop(self):
         """스트림 수신 중지"""
@@ -153,8 +172,9 @@ class RTSPStream:
 
         with self.thread_lock:
             thread = self.thread
+            thread_starting = self.thread_starting
 
-        if thread and threading.current_thread() != thread:
+        if thread and not thread_starting and threading.current_thread() != thread:
             thread.join(timeout=2.0)
             with self.thread_lock:
                 if self.thread is thread and not thread.is_alive():
@@ -257,6 +277,7 @@ class RTSPStream:
             with self.thread_lock:
                 if self.thread is current_thread:
                     self.thread = None
+                    self.thread_starting = False
 
     def get_frame(self) -> Optional[FrameInfo]:
         """최신 프레임 반환"""
