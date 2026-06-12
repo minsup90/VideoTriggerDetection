@@ -275,10 +275,6 @@ class RTSPStream:
         """마지막 프레임 수신 timestamp 반환"""
         return self.last_frame_timestamp
 
-    def restart(self):
-        """스트림 재시작"""
-        self.request_restart()
-
     def get_frame_number(self) -> int:
         """현재 프레임 번호 반환"""
         return self.frame_number
