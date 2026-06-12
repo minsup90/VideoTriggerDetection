@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
     QScrollArea, QGridLayout, QMessageBox, QComboBox, QSpinBox,
@@ -28,6 +28,10 @@ from template_matching import TemplateMatcher, TriggerBuffer, TenengradeAnalyzer
 
 class CameraWidget(QWidget):
     """카메라 1대의 라이브/설정/로그/검출 런타임을 독립 보유하는 위젯"""
+
+    rtsp_error_signal = pyqtSignal(str)
+    rtsp_state_signal = pyqtSignal(object)
+    log_append_signal = pyqtSignal(str)
 
     def __init__(self, camera_index: int, config_manager: ConfigManager, logger: Logger, app_restart_callback=None, parent=None):
         super().__init__(parent)
@@ -69,6 +73,10 @@ class CameraWidget(QWidget):
         self.consecutive_health_failures = 0
         self.stream_restart_history = []
 
+        self.rtsp_error_signal.connect(self.on_rtsp_error)
+        self.rtsp_state_signal.connect(self.on_rtsp_state_change)
+        self.log_append_signal.connect(self.append_log_text)
+
         self.init_ui()
         self.setup_callbacks()
         self.load_templates()
@@ -105,14 +113,16 @@ class CameraWidget(QWidget):
     def log_info(self, message: str):
         text = f"[{self.camera.name}] {message}"
         self.logger.info(text)
-        if hasattr(self, 'log_text'):
-            self.log_text.append(f"{datetime.now().strftime('%H:%M:%S')} {text}")
+        self.log_append_signal.emit(f"{datetime.now().strftime('%H:%M:%S')} {text}")
 
     def log_error(self, message: str):
         text = f"[{self.camera.name}] {message}"
         self.logger.error(text)
+        self.log_append_signal.emit(f"{datetime.now().strftime('%H:%M:%S')} ERROR {text}")
+
+    def append_log_text(self, line: str):
         if hasattr(self, 'log_text'):
-            self.log_text.append(f"{datetime.now().strftime('%H:%M:%S')} ERROR {text}")
+            self.log_text.append(line)
 
     def init_ui(self):
         layout = QHBoxLayout(self)
@@ -406,8 +416,8 @@ class CameraWidget(QWidget):
         return panel
 
     def setup_callbacks(self):
-        self.rtsp_stream.set_error_callback(self.on_rtsp_error)
-        self.rtsp_stream.set_state_callback(self.on_rtsp_state_change)
+        self.rtsp_stream.set_error_callback(self.rtsp_error_signal.emit)
+        self.rtsp_stream.set_state_callback(self.rtsp_state_signal.emit)
         self.main_image_label.set_roi_callback(self.on_roi_selected)
         self.main_image_label.set_template_callback(self.on_template_selected)
         self.ftp_manager.set_upload_callback(self.on_ftp_upload)
