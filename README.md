@@ -145,7 +145,11 @@ video_trigger_detection/
 
 ## 라이선스
 
-이 프로젝트는 내부용으로 개발되었습니다.
+이 프로젝트는 **GNU General Public License v3.0 (GPL-3.0)** 에 따라 공개 및 배포됩니다. 자세한 전문은 [`LICENSE`](LICENSE) 파일을 참고하세요.
+
+프로젝트 원저작자/관리자는 본 프로젝트의 GPL-3.0 배포에 동의합니다. 외부 배포 시에는 GPL-3.0의 소스 코드 제공, 라이선스 고지 유지, 수정본 동일 라이선스 배포 조건을 준수해야 합니다.
+
+이 프로젝트는 PyQt5, Qt, OpenCV, NumPy, PyYAML, PyInstaller, Pillow, pyftpdlib 등 제3자 오픈소스 패키지를 사용합니다. 각 패키지는 해당 upstream 라이선스를 따르며, 배포 시 관련 고지는 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)를 함께 확인하세요.
 
 ## 개발 정보
 
