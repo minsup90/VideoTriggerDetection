@@ -2,6 +2,10 @@
 RTSP Stream Module
 RTSP 비디오 스트림을 수신하고 관리하는 모듈
 """
+import os
+
+os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
+
 import cv2
 import threading
 import time
@@ -135,6 +139,7 @@ class RTSPStream:
         if self.running:
             return
 
+        self.restart_requested.clear()
         self.running = True
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.thread.start()

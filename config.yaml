@@ -217,3 +217,4 @@ gui:
   window_width: 1280
   window_height: 720
   show_tray_icon: true
+  start_minimized: false
