@@ -26,7 +26,7 @@ cameras:
   buffer:
     size: 5
   ftp:
-    enabled: true
+    enabled: false
     host: ''
     port: 21
     username: ''
