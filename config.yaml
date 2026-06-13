@@ -36,6 +36,7 @@ cameras:
   file_storage:
     save_dir: saved_images/Cam1
     retention_days: 30
+    min_free_space_percent: 0
     equipment_no: EQ01
     mount: Mount
     image_format: BMP
@@ -89,6 +90,7 @@ cameras:
   file_storage:
     save_dir: saved_images/Cam2
     retention_days: 30
+    min_free_space_percent: 0
     equipment_no: EQ01
     mount: Mount
     image_format: BMP
@@ -142,6 +144,7 @@ cameras:
   file_storage:
     save_dir: saved_images/Cam3
     retention_days: 30
+    min_free_space_percent: 0
     equipment_no: EQ01
     mount: Mount
     image_format: BMP
@@ -195,6 +198,7 @@ cameras:
   file_storage:
     save_dir: saved_images/Cam4
     retention_days: 30
+    min_free_space_percent: 0
     equipment_no: EQ01
     mount: Mount
     image_format: BMP

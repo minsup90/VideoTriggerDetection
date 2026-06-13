@@ -4,6 +4,7 @@ FTP 서버로 이미지 전송 기능
 """
 import os
 import ftplib
+import shutil
 from pathlib import Path
 from typing import Optional, Callable
 from datetime import datetime
@@ -216,7 +217,8 @@ class FileStorageManager:
         resize_width: int = 0,
         resize_height: int = 0,
         keep_aspect_ratio: bool = True,
-        filename_format: str = "{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}"
+        filename_format: str = "{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}",
+        min_free_space_percent: int = 0
     ):
         self.save_dir = Path(save_dir)
         self.retention_days = retention_days
@@ -229,6 +231,7 @@ class FileStorageManager:
         self.resize_height = max(0, int(resize_height or 0))
         self.keep_aspect_ratio = keep_aspect_ratio
         self.filename_format = filename_format or "{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}"
+        self.min_free_space_percent = max(0, min(100, int(min_free_space_percent or 0)))
         self.lock = threading.Lock()
 
         # 저장 디렉토리 생성
@@ -335,10 +338,19 @@ class FileStorageManager:
             print(f"이미지 저장 오류: {e}")
             return None
 
-    def cleanup_old_files(self):
-        """보관 기간이 지난 YYYYMMDD 날짜 폴더 삭제"""
+    def cleanup_old_files(self) -> dict:
+        """보관 기간/디스크 여유 용량 정책에 따라 오래된 이미지 삭제"""
+        stats = {
+            'date_dirs_deleted': 0,
+            'date_files_deleted': 0,
+            'space_files_deleted': 0,
+            'space_bytes_deleted': 0,
+            'free_percent_before': None,
+            'free_percent_after': None,
+            'errors': [],
+        }
         if not self.save_dir.exists():
-            return
+            return stats
 
         cutoff_date = datetime.now().date().toordinal() - self.retention_days
 
@@ -358,11 +370,85 @@ class FileStorageManager:
                         for file in date_dir.iterdir():
                             if file.is_file():
                                 file.unlink()
+                                stats['date_files_deleted'] += 1
                         date_dir.rmdir()
+                        stats['date_dirs_deleted'] += 1
                         print(f"오래된 파일 삭제: {date_dir}")
 
                 except Exception as e:
-                    print(f"파일 삭제 중 오류: {e}")
+                    error = f"파일 삭제 중 오류: {date_dir}, {e}"
+                    stats['errors'].append(error)
+                    print(error)
+
+            self._cleanup_by_free_space(stats)
+
+        return stats
+
+    def _image_files_oldest_first(self) -> list:
+        """저장 폴더 아래 이미지 파일을 날짜/수정시간 기준으로 오래된 순서로 반환"""
+        image_exts = {'.bmp', '.jpg', '.jpeg', '.png'}
+        files = []
+        for path in self.save_dir.rglob('*'):
+            if not path.is_file() or path.suffix.lower() not in image_exts:
+                continue
+            try:
+                parent_date = datetime.strptime(path.parent.name, "%Y%m%d").date().toordinal()
+            except ValueError:
+                parent_date = 0
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            files.append((parent_date, mtime, path))
+        return [path for _, _, path in sorted(files, key=lambda item: (item[0], item[1], str(item[2])))]
+
+    def _disk_free_percent(self) -> float:
+        usage = shutil.disk_usage(self.save_dir)
+        if usage.total <= 0:
+            return 0.0
+        return usage.free / usage.total * 100
+
+    def _cleanup_by_free_space(self, stats: dict):
+        """여유 용량 비율이 설정값보다 낮으면 가장 오래된 이미지부터 삭제"""
+        if self.min_free_space_percent <= 0:
+            return
+
+        try:
+            free_percent = self._disk_free_percent()
+            stats['free_percent_before'] = free_percent
+
+            if free_percent >= self.min_free_space_percent:
+                stats['free_percent_after'] = free_percent
+                return
+
+            for file in self._image_files_oldest_first():
+                if free_percent >= self.min_free_space_percent:
+                    break
+                try:
+                    size = file.stat().st_size
+                    file.unlink()
+                    stats['space_files_deleted'] += 1
+                    stats['space_bytes_deleted'] += size
+                    self._remove_empty_date_dir(file.parent)
+                    print(f"용량 확보를 위해 오래된 이미지 삭제: {file}")
+                except Exception as e:
+                    error = f"용량 기준 이미지 삭제 중 오류: {file}, {e}"
+                    stats['errors'].append(error)
+                    print(error)
+                free_percent = self._disk_free_percent()
+
+            stats['free_percent_after'] = free_percent
+        except Exception as e:
+            error = f"디스크 여유 용량 확인 중 오류: {e}"
+            stats['errors'].append(error)
+            print(error)
+
+    def _remove_empty_date_dir(self, date_dir: Path):
+        try:
+            if date_dir != self.save_dir and date_dir.is_dir() and not any(date_dir.iterdir()):
+                date_dir.rmdir()
+        except OSError:
+            pass
 
     def get_saved_files(self, date_str: str = None) -> list:
         """
