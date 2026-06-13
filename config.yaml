@@ -7,7 +7,7 @@ cameras:
   name: Cam1
   enabled: true
   rtsp:
-    url: rtsp://localhost:553/live
+    url: rtsp://localhost:554/live
     reconnect_interval: 10
   ai_classification:
     model_path: ''
