@@ -49,6 +49,7 @@ cameras:
     enabled: true
     timeout_sec: 10
     check_interval_sec: 1
+    freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     restart_stream: true
     restart_app: true
@@ -100,6 +101,7 @@ cameras:
     enabled: true
     timeout_sec: 10
     check_interval_sec: 1
+    freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     restart_stream: true
     restart_app: true
@@ -151,6 +153,7 @@ cameras:
     enabled: true
     timeout_sec: 10
     check_interval_sec: 1
+    freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     restart_stream: true
     restart_app: true
@@ -202,6 +205,7 @@ cameras:
     enabled: true
     timeout_sec: 10
     check_interval_sec: 1
+    freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     restart_stream: true
     restart_app: true

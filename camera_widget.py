@@ -71,9 +71,11 @@ class CameraWidget(QWidget):
         self.show_roi_regions = True
         self.background_frame_cnt = 0
         self.image_save_done = False
+        self.previous_health_gray = None
         self.last_health_frame = None
         self.last_health_diff = None
         self.last_health_change_time = time.time()
+        self.last_freeze_check_at = 0.0
         self.health_started_at = time.time()
         self.first_frame_received = False
         self.last_stream_restart_at = 0.0
@@ -477,6 +479,8 @@ class CameraWidget(QWidget):
         self.last_stream_restart_at = 0.0
         self.health_restart_in_progress = False
         self.last_health_failure_counted_at = 0.0
+        self.previous_health_gray = None
+        self.last_freeze_check_at = 0.0
         self.last_health_frame = None
         self.last_health_diff = None
         self.selected_image = None
@@ -799,16 +803,13 @@ class CameraWidget(QWidget):
         if frame is None:
             return False
         try:
-            small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA)
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
-            if self.last_health_frame is None:
-                self.last_health_frame = gray
-                self.last_health_diff = None
+            current_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+            if self.previous_health_gray is None or current_gray.shape != self.previous_health_gray.shape:
+                self.previous_health_gray = current_gray.copy()
                 self.last_health_change_time = time.time()
                 return True
-            diff = float(np.mean(cv2.absdiff(gray, self.last_health_frame)))
-            self.last_health_diff = diff
-            self.last_health_frame = gray
+            diff = float(np.mean(cv2.absdiff(current_gray, self.previous_health_gray)))
+            self.previous_health_gray = current_gray.copy()
             if diff > self.camera.healthcheck.freeze_diff_threshold:
                 self.last_health_change_time = time.time()
                 return True
@@ -836,9 +837,14 @@ class CameraWidget(QWidget):
         in_startup_grace = not self.first_frame_received and now - self.health_started_at < hc.timeout_sec
         no_frame_timeout = (not last_ts) or (now - last_ts > hc.timeout_sec)
         current_frame = None if self.selected_image is not None else self.main_image_label.current_image
-        self._frame_changed(current_frame)
+        freeze_check_due = now - self.last_freeze_check_at >= hc.freeze_check_interval_sec
+        if freeze_check_due:
+            self.last_freeze_check_at = now
+            self._frame_changed(current_frame)
         freeze_timeout = (
-            self.selected_image is None
+            freeze_check_due
+            and current_frame is not None
+            and self.selected_image is None
             and self.first_frame_received
             and now - self.last_health_change_time > hc.timeout_sec
         )
@@ -913,8 +919,8 @@ class CameraWidget(QWidget):
         self.health_started_at = now
         self.first_frame_received = False
         self.last_health_change_time = now
-        self.last_health_frame = None
-        self.last_health_diff = None
+        self.previous_health_gray = None
+        self.last_freeze_check_at = 0.0
         self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
@@ -944,9 +950,8 @@ class CameraWidget(QWidget):
             self.health_started_at = now
             self.first_frame_received = False
             self.last_health_change_time = now
-            self.last_health_frame = None
-            self.last_health_diff = None
-            self.health_restart_in_progress = False
+            self.previous_health_gray = None
+            self.last_freeze_check_at = 0.0
             self.health_label.setText("Health: 첫 프레임 대기중")
             self.main_image_label.set_status_message("")
             self.status_label.setText("상태: 연결됨")
