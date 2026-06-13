@@ -50,6 +50,7 @@ cameras:
     timeout_sec: 10
     check_interval_sec: 1
     freeze_diff_threshold: 1.0
+    freeze_consecutive_count: 3
     restart_stream: true
     restart_app: true
     restart_limit_enabled: true
@@ -101,6 +102,7 @@ cameras:
     timeout_sec: 10
     check_interval_sec: 1
     freeze_diff_threshold: 1.0
+    freeze_consecutive_count: 3
     restart_stream: true
     restart_app: true
     restart_limit_enabled: true
@@ -152,6 +154,7 @@ cameras:
     timeout_sec: 10
     check_interval_sec: 1
     freeze_diff_threshold: 1.0
+    freeze_consecutive_count: 3
     restart_stream: true
     restart_app: true
     restart_limit_enabled: true
@@ -203,6 +206,7 @@ cameras:
     timeout_sec: 10
     check_interval_sec: 1
     freeze_diff_threshold: 1.0
+    freeze_consecutive_count: 3
     restart_stream: true
     restart_app: true
     restart_limit_enabled: true

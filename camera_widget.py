@@ -73,6 +73,7 @@ class CameraWidget(QWidget):
         self.image_save_done = False
         self.last_health_frame = None
         self.last_health_change_time = time.time()
+        self.freeze_same_count = 0
         self.health_started_at = time.time()
         self.first_frame_received = False
         self.last_stream_restart_at = 0.0
@@ -477,6 +478,7 @@ class CameraWidget(QWidget):
         self.health_restart_in_progress = False
         self.last_health_failure_counted_at = 0.0
         self.last_health_frame = None
+        self.freeze_same_count = 0
         self.selected_image = None
         self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
         self.rtsp_stream.start()
@@ -802,12 +804,15 @@ class CameraWidget(QWidget):
             if self.last_health_frame is None:
                 self.last_health_frame = gray
                 self.last_health_change_time = time.time()
+                self.freeze_same_count = 0
                 return True
             diff = float(np.mean(cv2.absdiff(gray, self.last_health_frame)))
             self.last_health_frame = gray
             if diff > self.camera.healthcheck.freeze_diff_threshold:
                 self.last_health_change_time = time.time()
+                self.freeze_same_count = 0
                 return True
+            self.freeze_same_count += 1
             return False
         except Exception as exc:
             self.log_error(f"HealthCheck 프레임 비교 오류: {exc}")
@@ -826,7 +831,7 @@ class CameraWidget(QWidget):
         freeze_timeout = (
             self.selected_image is None
             and self.first_frame_received
-            and now - self.last_health_change_time > hc.timeout_sec
+            and self.freeze_same_count >= hc.freeze_consecutive_count
         )
 
         if in_startup_grace:
@@ -889,6 +894,7 @@ class CameraWidget(QWidget):
         self.first_frame_received = False
         self.last_health_change_time = now
         self.last_health_frame = None
+        self.freeze_same_count = 0
         self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
@@ -919,6 +925,7 @@ class CameraWidget(QWidget):
             self.first_frame_received = False
             self.last_health_change_time = now
             self.last_health_frame = None
+            self.freeze_same_count = 0
             self.health_label.setText("Health: 첫 프레임 대기중")
             self.main_image_label.set_status_message("")
             self.status_label.setText("상태: 연결됨")
