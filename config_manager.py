@@ -70,7 +70,7 @@ class ImageSaveOptions:
     equipment_no: str = "EQ01"
     mount: str = "Mount"
     image_format: str = "BMP"  # BMP, JPG, PNG
-    quality: int = 90  # JPG 품질 또는 PNG 압축률 UI 값(10~90)
+    quality: int = 90  # JPG 품질 또는 PNG 압축률 UI 값(10~100)
     resize_enabled: bool = False
     resize_width: int = 0
     resize_height: int = 0
@@ -97,7 +97,7 @@ class ImageSaveOptions:
             equipment_no=data.get('equipment_no', 'EQ01'),
             mount=data.get('mount', data.get('mount_name', 'Mount')),
             image_format=str(data.get('image_format', 'BMP')).upper(),
-            quality=max(10, min(90, int(data.get('quality', data.get('jpeg_quality', 90))))),
+            quality=max(10, min(100, int(data.get('quality', data.get('jpeg_quality', 90))))),
             resize_enabled=bool(data.get('resize_enabled', False)),
             resize_width=max(0, int(data.get('resize_width', 0) or 0)),
             resize_height=max(0, int(data.get('resize_height', 0) or 0)),
