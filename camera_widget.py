@@ -71,9 +71,12 @@ class CameraWidget(QWidget):
         self.show_roi_regions = True
         self.background_frame_cnt = 0
         self.image_save_done = False
+        self.previous_health_gray = None
         self.last_health_frame = None
+        self.last_health_diff = None
         self.last_health_change_time = time.time()
         self.freeze_same_count = 0
+        self.last_freeze_check_at = 0.0
         self.health_started_at = time.time()
         self.first_frame_received = False
         self.last_stream_restart_at = 0.0
@@ -477,8 +480,11 @@ class CameraWidget(QWidget):
         self.last_stream_restart_at = 0.0
         self.health_restart_in_progress = False
         self.last_health_failure_counted_at = 0.0
+        self.previous_health_gray = None
+        self.last_freeze_check_at = 0.0
         self.last_health_frame = None
         self.freeze_same_count = 0
+        self.last_health_diff = None
         self.selected_image = None
         self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
         self.rtsp_stream.start()
@@ -799,15 +805,14 @@ class CameraWidget(QWidget):
         if frame is None:
             return False
         try:
-            small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA)
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
-            if self.last_health_frame is None:
-                self.last_health_frame = gray
+            current_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+            if self.previous_health_gray is None or current_gray.shape != self.previous_health_gray.shape:
+                self.previous_health_gray = current_gray.copy()
                 self.last_health_change_time = time.time()
                 self.freeze_same_count = 0
                 return True
-            diff = float(np.mean(cv2.absdiff(gray, self.last_health_frame)))
-            self.last_health_frame = gray
+            diff = float(np.mean(cv2.absdiff(current_gray, self.previous_health_gray)))
+            self.previous_health_gray = current_gray.copy()
             if diff > self.camera.healthcheck.freeze_diff_threshold:
                 self.last_health_change_time = time.time()
                 self.freeze_same_count = 0
@@ -824,12 +829,27 @@ class CameraWidget(QWidget):
             return
         now = time.time()
         last_ts = self.rtsp_stream.get_last_frame_timestamp()
+        reconnecting_states = (
+            StreamState.CONNECTING,
+            StreamState.DISCONNECTED,
+            StreamState.ERROR,
+        )
+        stream_reconnecting = self.rtsp_stream.state in reconnecting_states
+        if stream_reconnecting or self.health_restart_in_progress:
+            self.health_label.setText("Health: RTSP 재연결 중")
+            return
+
         in_startup_grace = not self.first_frame_received and now - self.health_started_at < hc.timeout_sec
         no_frame_timeout = (not last_ts) or (now - last_ts > hc.timeout_sec)
         current_frame = None if self.selected_image is not None else self.main_image_label.current_image
-        self._frame_changed(current_frame)
+        freeze_check_due = now - self.last_freeze_check_at >= hc.freeze_check_interval_sec
+        if freeze_check_due:
+            self.last_freeze_check_at = now
+            self._frame_changed(current_frame)
         freeze_timeout = (
-            self.selected_image is None
+            freeze_check_due
+            and current_frame is not None
+            and self.selected_image is None
             and self.first_frame_received
             and self.freeze_same_count >= hc.freeze_consecutive_count
         )
@@ -849,25 +869,36 @@ class CameraWidget(QWidget):
         reason = "프레임 수신 없음" if no_frame_timeout else "영상 변화 없음"
         self.health_label.setText(f"Health: 이상 감지 - {reason}")
         if self.last_health_error_reason != reason or now - self.last_health_error_logged_at >= 5.0:
-            self.log_error(f"HealthCheck 이상 감지: {reason}")
+            last_frame_age = now - last_ts if last_ts else None
+            state = self.rtsp_stream.state
+            state_name = state.name if hasattr(state, "name") else str(state)
+            last_health_diff = (
+                f"{self.last_health_diff:.3f}"
+                if self.last_health_diff is not None
+                else "None"
+            )
+            last_frame_age_text = f"{last_frame_age:.3f}" if last_frame_age is not None else "None"
+            self.log_error(
+                "HealthCheck 이상 감지: "
+                f"reason={reason}, "
+                f"rtsp_stream.state={state_name}, "
+                f"fps={self.rtsp_stream.get_fps():.3f}, "
+                f"frame_number={self.rtsp_stream.get_frame_number()}, "
+                f"last_frame_age={last_frame_age_text}, "
+                f"last_health_diff={last_health_diff}, "
+                f"first_frame_received={self.first_frame_received}, "
+                f"health_restart_in_progress={self.health_restart_in_progress}"
+            )
             self.last_health_error_reason = reason
             self.last_health_error_logged_at = now
 
         reconnect_interval = self.camera.rtsp_reconnect_interval
         reconnect_waiting = now - self.last_stream_restart_at < reconnect_interval
-        stream_reconnecting = self.rtsp_stream.state in (
-            StreamState.CONNECTING,
-            StreamState.DISCONNECTED,
-            StreamState.ERROR,
-        )
 
         # RTSPStream._capture_loop가 CONNECTED가 아닐 때 자동 재연결을 담당한다.
-        # HealthCheck는 이미 재연결 중인 스트림을 다시 끊지 않고, 실패 주기만 집계해
-        # 반복 실패 시 프로그램 재시작 옵션이 동작하도록 한다.
-        if stream_reconnecting or self.health_restart_in_progress:
-            if not reconnect_waiting:
-                self._count_health_reconnect_failure(now)
-        elif hc.restart_stream and not reconnect_waiting:
+        # HealthCheck는 재연결 중에는 프레임 미수신을 장애로 기록하지 않고,
+        # CONNECTED 전환 후 grace period가 지난 뒤에만 no_frame_timeout을 장애로 처리한다.
+        if hc.restart_stream and not reconnect_waiting:
             # CONNECTED 상태인데 프레임/변화가 멈춘 경우에만 캡처 스레드에 강제 재연결을 요청한다.
             if self.restart_stream():
                 self._count_health_reconnect_failure(now)
@@ -895,6 +926,8 @@ class CameraWidget(QWidget):
         self.last_health_change_time = now
         self.last_health_frame = None
         self.freeze_same_count = 0
+        self.previous_health_gray = None
+        self.last_freeze_check_at = 0.0
         self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
@@ -926,18 +959,23 @@ class CameraWidget(QWidget):
             self.last_health_change_time = now
             self.last_health_frame = None
             self.freeze_same_count = 0
+            self.previous_health_gray = None
+            self.last_freeze_check_at = 0.0
             self.health_label.setText("Health: 첫 프레임 대기중")
             self.main_image_label.set_status_message("")
             self.status_label.setText("상태: 연결됨")
         elif state == StreamState.DISCONNECTED:
-            self.main_image_label.set_status_message("RTSP 연결 끊김")
-            self.status_label.setText("상태: 연결 끊김")
+            self.health_label.setText("Health: RTSP 재연결 중")
+            self.main_image_label.set_status_message("RTSP 재연결 중", QColor(255, 220, 80))
+            self.status_label.setText("상태: RTSP 재연결 중")
         elif state == StreamState.CONNECTING:
-            self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
-            self.status_label.setText("상태: 연결 중")
+            self.health_label.setText("Health: RTSP 재연결 중")
+            self.main_image_label.set_status_message("RTSP 재연결 중", QColor(255, 220, 80))
+            self.status_label.setText("상태: RTSP 재연결 중")
         elif state == StreamState.ERROR:
-            self.main_image_label.set_status_message("RTSP ERROR / 연결 실패")
-            self.status_label.setText("상태: 오류")
+            self.health_label.setText("Health: RTSP 재연결 중")
+            self.main_image_label.set_status_message("RTSP 재연결 중", QColor(255, 220, 80))
+            self.status_label.setText("상태: RTSP 재연결 중")
 
     def on_ftp_upload(self, filepath: str, success: bool, error: Optional[str]):
         self.logger.log_ftp_upload(filepath, success, error)

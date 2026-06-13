@@ -115,6 +115,7 @@ class HealthCheckConfig:
     enabled: bool = True
     timeout_sec: int = 10
     check_interval_sec: int = 1
+    freeze_check_interval_sec: int = 180
     freeze_diff_threshold: float = 1.0
     freeze_consecutive_count: int = 3
     restart_stream: bool = True
@@ -127,6 +128,7 @@ class HealthCheckConfig:
             'enabled': self.enabled,
             'timeout_sec': self.timeout_sec,
             'check_interval_sec': self.check_interval_sec,
+            'freeze_check_interval_sec': self.freeze_check_interval_sec,
             'freeze_diff_threshold': self.freeze_diff_threshold,
             'freeze_consecutive_count': self.freeze_consecutive_count,
             'restart_stream': self.restart_stream,
@@ -142,6 +144,7 @@ class HealthCheckConfig:
             enabled=bool(data.get('enabled', True)),
             timeout_sec=max(1, int(data.get('timeout_sec', 10))),
             check_interval_sec=max(1, int(data.get('check_interval_sec', 1))),
+            freeze_check_interval_sec=max(1, int(data.get('freeze_check_interval_sec', 180))),
             freeze_diff_threshold=float(data.get('freeze_diff_threshold', 1.0)),
             freeze_consecutive_count=max(1, int(data.get('freeze_consecutive_count', 3))),
             restart_stream=bool(data.get('restart_stream', True)),
