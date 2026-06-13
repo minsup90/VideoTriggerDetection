@@ -182,6 +182,7 @@ class CameraConfig:
     ftp_timeout: int = 30
     save_dir: str = "saved_images/Cam1"
     retention_days: int = 30
+    min_free_space_percent: int = 0
     image_save: ImageSaveOptions = field(default_factory=ImageSaveOptions)
     healthcheck: HealthCheckConfig = field(default_factory=HealthCheckConfig)
 
@@ -227,6 +228,7 @@ class CameraConfig:
             'file_storage': {
                 'save_dir': self.save_dir,
                 'retention_days': self.retention_days,
+                'min_free_space_percent': self.min_free_space_percent,
                 **self.image_save.to_dict()
             },
             'healthcheck': self.healthcheck.to_dict()
@@ -270,6 +272,7 @@ class CameraConfig:
             ftp_timeout=ftp.get('timeout', 30),
             save_dir=storage.get('save_dir', f'saved_images/{name}'),
             retention_days=storage.get('retention_days', 30),
+            min_free_space_percent=max(0, min(100, int(storage.get('min_free_space_percent', 0) or 0))),
             image_save=ImageSaveOptions.from_dict(storage),
             healthcheck=HealthCheckConfig.from_dict(data.get('healthcheck', {}))
         )
@@ -340,6 +343,7 @@ class Config:
         self.ftp_timeout = cam.ftp_timeout
         self.save_dir = cam.save_dir
         self.retention_days = cam.retention_days
+        self.min_free_space_percent = cam.min_free_space_percent
         self.filename_format = cam.image_save.filename_format
 
     def to_dict(self) -> Dict[str, Any]:

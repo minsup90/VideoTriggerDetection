@@ -124,6 +124,7 @@ class CameraWidget(QWidget):
             resize_height=opts.resize_height,
             keep_aspect_ratio=opts.keep_aspect_ratio,
             filename_format=opts.filename_format,
+            min_free_space_percent=self.camera.min_free_space_percent,
         )
 
     def log_info(self, message: str):
@@ -301,6 +302,12 @@ class CameraWidget(QWidget):
         self.retention_spin.setRange(1, 3650)
         self.retention_spin.setValue(self.camera.retention_days)
         file_layout.addWidget(self.retention_spin)
+        file_layout.addWidget(QLabel("최소 여유 용량(%):"))
+        self.min_free_space_spin = QSpinBox()
+        self.min_free_space_spin.setRange(0, 100)
+        self.min_free_space_spin.setSpecialValueText("사용 안 함")
+        self.min_free_space_spin.setValue(self.camera.min_free_space_percent)
+        file_layout.addWidget(self.min_free_space_spin)
         file_layout.addWidget(QLabel("설비 No:"))
         self.equipment_edit = QLineEdit(self.camera.image_save.equipment_no)
         file_layout.addWidget(self.equipment_edit)
@@ -712,6 +719,7 @@ class CameraWidget(QWidget):
         self.camera.frame_save_duration = self.duration_spin.value()
         self.camera.save_dir = self.save_dir_edit.text().strip() or f"saved_images/{self.camera.name}"
         self.camera.retention_days = self.retention_spin.value()
+        self.camera.min_free_space_percent = self.min_free_space_spin.value()
         self.camera.image_save.equipment_no = self.equipment_edit.text().strip() or "EQ01"
         self.camera.image_save.mount = self.mount_edit.text().strip() or "Mount"
         self.camera.image_save.image_format = self.image_format_combo.currentText()
@@ -814,6 +822,7 @@ class CameraWidget(QWidget):
             if filepath:
                 self.logger.log_image_saved(filepath, tenengrade_score)
                 self.log_info(f"이미지 저장: {filepath}")
+                self.cleanup_old_files()
                 if self.ftp_manager.is_enabled():
                     date_str = datetime.now().strftime("%Y%m%d")
                     remote_subdir = f"{self.camera.name}/{date_str}"
@@ -968,7 +977,26 @@ class CameraWidget(QWidget):
         return True
 
     def cleanup_old_files(self):
-        self.file_storage.cleanup_old_files()
+        stats = self.file_storage.cleanup_old_files()
+        if not stats:
+            return
+
+        deleted_by_date = stats.get('date_files_deleted', 0)
+        deleted_by_space = stats.get('space_files_deleted', 0)
+        if deleted_by_date or deleted_by_space:
+            msg = (
+                f"저장 이미지 정리 완료: "
+                f"기간 기준 {deleted_by_date}개, "
+                f"용량 기준 {deleted_by_space}개 삭제"
+            )
+            free_before = stats.get('free_percent_before')
+            free_after = stats.get('free_percent_after')
+            if free_before is not None and free_after is not None:
+                msg += f" (여유 용량 {free_before:.1f}% -> {free_after:.1f}%)"
+            self.log_info(msg)
+
+        for error in stats.get('errors', []):
+            self.log_error(error)
 
     def on_rtsp_error(self, error_msg: str):
         self.log_error(f"RTSP 오류: {error_msg}")
