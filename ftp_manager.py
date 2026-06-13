@@ -223,7 +223,7 @@ class FileStorageManager:
         self.equipment_no = equipment_no or "EQ01"
         self.mount = mount or "Mount"
         self.image_format = (image_format or "BMP").upper()
-        self.quality = max(10, min(90, int(quality)))
+        self.quality = max(10, min(100, int(quality)))
         self.resize_enabled = resize_enabled
         self.resize_width = max(0, int(resize_width or 0))
         self.resize_height = max(0, int(resize_height or 0))
@@ -300,7 +300,7 @@ class FileStorageManager:
         if self.image_format in ("JPG", "JPEG"):
             return [cv2.IMWRITE_JPEG_QUALITY, self.quality]
         if self.image_format == "PNG":
-            # UI 입력 10~90을 PNG 압축 1~9로 매핑한다. 높을수록 더 압축한다.
+            # UI 입력 10~100을 PNG 압축 1~9로 매핑한다. 높을수록 더 압축한다.
             png_compression = max(1, min(9, round(self.quality / 10)))
             return [cv2.IMWRITE_PNG_COMPRESSION, png_compression]
         return []
