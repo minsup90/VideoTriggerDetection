@@ -8,7 +8,7 @@ cameras:
   enabled: true
   rtsp:
     url: rtsp://localhost:553/live
-    reconnect_interval: 5
+    reconnect_interval: 10
   ai_classification:
     model_path: ''
     enabled: false
