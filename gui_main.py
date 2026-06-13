@@ -107,6 +107,7 @@ class TrayIcon:
             self.tray_icon.setIcon(QIcon(str(icon_path)))
         else:
             self.tray_icon.setIcon(main_window.style().standardIcon(main_window.style().SP_ComputerIcon))
+        self.tray_icon.setToolTip(main_window.config.window_title)
 
         menu = QMenu()
         show_action = QAction("보이기", main_window)
