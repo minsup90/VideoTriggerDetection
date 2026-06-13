@@ -338,7 +338,7 @@ class FileStorageManager:
             print(f"이미지 저장 오류: {e}")
             return None
 
-    def cleanup_old_files(self) -> dict:
+    def cleanup_old_files(self, exclude_paths: set[str] = None) -> dict:
         """보관 기간/디스크 여유 용량 정책에 따라 오래된 이미지 삭제"""
         stats = {
             'date_dirs_deleted': 0,
@@ -380,26 +380,36 @@ class FileStorageManager:
                     stats['errors'].append(error)
                     print(error)
 
-            self._cleanup_by_free_space(stats)
+            self._cleanup_by_free_space(stats, exclude_paths)
 
         return stats
 
-    def _image_files_oldest_first(self) -> list:
-        """저장 폴더 아래 이미지 파일을 날짜/수정시간 기준으로 오래된 순서로 반환"""
+    def _image_files_oldest_first(self, exclude_paths: set[Path] = None) -> list:
+        """관리 대상 날짜 폴더 아래 이미지 파일을 오래된 순서로 반환"""
         image_exts = {'.bmp', '.jpg', '.jpeg', '.png'}
+        excluded = exclude_paths or set()
         files = []
-        for path in self.save_dir.rglob('*'):
-            if not path.is_file() or path.suffix.lower() not in image_exts:
+        for date_dir in self.save_dir.iterdir():
+            if not date_dir.is_dir():
                 continue
             try:
-                parent_date = datetime.strptime(path.parent.name, "%Y%m%d").date().toordinal()
+                parent_date = datetime.strptime(date_dir.name, "%Y%m%d").date().toordinal()
             except ValueError:
-                parent_date = 0
-            try:
-                mtime = path.stat().st_mtime
-            except OSError:
                 continue
-            files.append((parent_date, mtime, path))
+            for path in date_dir.iterdir():
+                if not path.is_file() or path.suffix.lower() not in image_exts:
+                    continue
+                try:
+                    resolved_path = path.resolve()
+                except OSError:
+                    continue
+                if resolved_path in excluded:
+                    continue
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    continue
+                files.append((parent_date, mtime, path))
         return [path for _, _, path in sorted(files, key=lambda item: (item[0], item[1], str(item[2])))]
 
     def _disk_free_percent(self) -> float:
@@ -408,7 +418,7 @@ class FileStorageManager:
             return 0.0
         return usage.free / usage.total * 100
 
-    def _cleanup_by_free_space(self, stats: dict):
+    def _cleanup_by_free_space(self, stats: dict, exclude_paths: set[str] = None):
         """여유 용량 비율이 설정값보다 낮으면 가장 오래된 이미지부터 삭제"""
         if self.min_free_space_percent <= 0:
             return
@@ -421,7 +431,14 @@ class FileStorageManager:
                 stats['free_percent_after'] = free_percent
                 return
 
-            for file in self._image_files_oldest_first():
+            excluded = set()
+            for exclude_path in exclude_paths or set():
+                try:
+                    excluded.add(Path(exclude_path).resolve())
+                except OSError:
+                    continue
+
+            for file in self._image_files_oldest_first(excluded):
                 if free_percent >= self.min_free_space_percent:
                     break
                 try:

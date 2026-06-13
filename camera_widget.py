@@ -822,11 +822,11 @@ class CameraWidget(QWidget):
             if filepath:
                 self.logger.log_image_saved(filepath, tenengrade_score)
                 self.log_info(f"이미지 저장: {filepath}")
-                self.cleanup_old_files()
                 if self.ftp_manager.is_enabled():
                     date_str = datetime.now().strftime("%Y%m%d")
                     remote_subdir = f"{self.camera.name}/{date_str}"
                     self.ftp_manager.upload_file_async(filepath, remote_subdir)
+                self.cleanup_old_files(exclude_paths={filepath})
 
     def _frame_changed(self, frame) -> bool:
         if frame is None:
@@ -976,8 +976,8 @@ class CameraWidget(QWidget):
         self.rtsp_stream.request_restart()
         return True
 
-    def cleanup_old_files(self):
-        stats = self.file_storage.cleanup_old_files()
+    def cleanup_old_files(self, exclude_paths: set[str] = None):
+        stats = self.file_storage.cleanup_old_files(exclude_paths=exclude_paths)
         if not stats:
             return
 
