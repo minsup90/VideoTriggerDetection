@@ -72,7 +72,6 @@ class CameraWidget(QWidget):
         self.background_frame_cnt = 0
         self.image_save_done = False
         self.previous_health_gray = None
-        self.last_health_frame = None
         self.last_health_diff = None
         self.last_health_change_time = time.time()
         self.freeze_same_count = 0
@@ -342,11 +341,28 @@ class CameraWidget(QWidget):
         self.health_enabled_check = QCheckBox("HealthCheck 사용")
         self.health_enabled_check.setChecked(self.camera.healthcheck.enabled)
         health_layout.addWidget(self.health_enabled_check)
-        health_layout.addWidget(QLabel("영상 정지 판단 시간(초):"))
+        health_layout.addWidget(QLabel("프레임 미수신/시작 대기 제한 시간(초):"))
         self.health_timeout_spin = QSpinBox()
         self.health_timeout_spin.setRange(1, 3600)
         self.health_timeout_spin.setValue(self.camera.healthcheck.timeout_sec)
         health_layout.addWidget(self.health_timeout_spin)
+        health_layout.addWidget(QLabel("영상 정지 검사 주기(초):"))
+        self.freeze_interval_spin = QSpinBox()
+        self.freeze_interval_spin.setRange(1, 3600)
+        self.freeze_interval_spin.setValue(self.camera.healthcheck.freeze_check_interval_sec)
+        health_layout.addWidget(self.freeze_interval_spin)
+        health_layout.addWidget(QLabel("영상 정지 연속 동일 판정 횟수:"))
+        self.freeze_count_spin = QSpinBox()
+        self.freeze_count_spin.setRange(1, 100)
+        self.freeze_count_spin.setValue(self.camera.healthcheck.freeze_consecutive_count)
+        health_layout.addWidget(self.freeze_count_spin)
+        health_layout.addWidget(QLabel("영상 변화 감지 임계값:"))
+        self.freeze_diff_spin = QDoubleSpinBox()
+        self.freeze_diff_spin.setRange(0.0, 255.0)
+        self.freeze_diff_spin.setDecimals(3)
+        self.freeze_diff_spin.setSingleStep(0.1)
+        self.freeze_diff_spin.setValue(self.camera.healthcheck.freeze_diff_threshold)
+        health_layout.addWidget(self.freeze_diff_spin)
         self.restart_stream_check = QCheckBox("이상 시 RTSP 재연결")
         self.restart_stream_check.setChecked(self.camera.healthcheck.restart_stream)
         health_layout.addWidget(self.restart_stream_check)
@@ -482,7 +498,6 @@ class CameraWidget(QWidget):
         self.last_health_failure_counted_at = 0.0
         self.previous_health_gray = None
         self.last_freeze_check_at = 0.0
-        self.last_health_frame = None
         self.freeze_same_count = 0
         self.last_health_diff = None
         self.selected_image = None
@@ -707,6 +722,9 @@ class CameraWidget(QWidget):
         self.camera.image_save.keep_aspect_ratio = self.keep_aspect_check.isChecked()
         self.camera.healthcheck.enabled = self.health_enabled_check.isChecked()
         self.camera.healthcheck.timeout_sec = self.health_timeout_spin.value()
+        self.camera.healthcheck.freeze_check_interval_sec = self.freeze_interval_spin.value()
+        self.camera.healthcheck.freeze_consecutive_count = self.freeze_count_spin.value()
+        self.camera.healthcheck.freeze_diff_threshold = self.freeze_diff_spin.value()
         self.camera.healthcheck.restart_stream = self.restart_stream_check.isChecked()
         self.camera.healthcheck.restart_app = self.restart_app_check.isChecked()
         self.camera.healthcheck.restart_limit_enabled = self.restart_limit_check.isChecked()
@@ -805,13 +823,16 @@ class CameraWidget(QWidget):
         if frame is None:
             return False
         try:
-            current_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+            small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA)
+            current_gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
             if self.previous_health_gray is None or current_gray.shape != self.previous_health_gray.shape:
                 self.previous_health_gray = current_gray.copy()
+                self.last_health_diff = None
                 self.last_health_change_time = time.time()
                 self.freeze_same_count = 0
                 return True
             diff = float(np.mean(cv2.absdiff(current_gray, self.previous_health_gray)))
+            self.last_health_diff = diff
             self.previous_health_gray = current_gray.copy()
             if diff > self.camera.healthcheck.freeze_diff_threshold:
                 self.last_health_change_time = time.time()
@@ -835,15 +856,13 @@ class CameraWidget(QWidget):
             StreamState.ERROR,
         )
         stream_reconnecting = self.rtsp_stream.state in reconnecting_states
-        if stream_reconnecting or self.health_restart_in_progress:
-            self.health_label.setText("Health: RTSP 재연결 중")
-            return
+        reconnect_or_restart_pending = stream_reconnecting or self.health_restart_in_progress
 
         in_startup_grace = not self.first_frame_received and now - self.health_started_at < hc.timeout_sec
         no_frame_timeout = (not last_ts) or (now - last_ts > hc.timeout_sec)
         current_frame = None if self.selected_image is not None else self.main_image_label.current_image
         freeze_check_due = now - self.last_freeze_check_at >= hc.freeze_check_interval_sec
-        if freeze_check_due:
+        if not reconnect_or_restart_pending and freeze_check_due:
             self.last_freeze_check_at = now
             self._frame_changed(current_frame)
         freeze_timeout = (
@@ -855,15 +874,24 @@ class CameraWidget(QWidget):
         )
 
         if in_startup_grace:
-            self.health_label.setText("Health: 첫 프레임 대기중")
+            if reconnect_or_restart_pending:
+                self.health_label.setText("Health: RTSP 재연결 중")
+            else:
+                self.health_label.setText("Health: 첫 프레임 대기중")
             return
 
-        if not no_frame_timeout and not freeze_timeout:
+        if reconnect_or_restart_pending:
+            self.health_label.setText("Health: RTSP 재연결 중")
+
+        if not reconnect_or_restart_pending and not no_frame_timeout and not freeze_timeout:
             self.consecutive_health_failures = 0
             self.last_health_failure_counted_at = 0.0
             self.health_label.setText("Health: 정상")
             self.last_health_error_reason = None
             self.last_health_error_logged_at = 0.0
+            return
+
+        if reconnect_or_restart_pending and not no_frame_timeout:
             return
 
         reason = "프레임 수신 없음" if no_frame_timeout else "영상 변화 없음"
@@ -896,9 +924,12 @@ class CameraWidget(QWidget):
         reconnect_waiting = now - self.last_stream_restart_at < reconnect_interval
 
         # RTSPStream._capture_loop가 CONNECTED가 아닐 때 자동 재연결을 담당한다.
-        # HealthCheck는 재연결 중에는 프레임 미수신을 장애로 기록하지 않고,
-        # CONNECTED 전환 후 grace period가 지난 뒤에만 no_frame_timeout을 장애로 처리한다.
-        if hc.restart_stream and not reconnect_waiting:
+        # HealthCheck는 재연결 중인 스트림을 다시 끊지 않고 실패 주기만 집계해
+        # 반복 실패 시 프로그램 재시작 옵션이 동작하도록 한다.
+        if reconnect_or_restart_pending:
+            if not reconnect_waiting:
+                self._count_health_reconnect_failure(now)
+        elif hc.restart_stream and not reconnect_waiting:
             # CONNECTED 상태인데 프레임/변화가 멈춘 경우에만 캡처 스레드에 강제 재연결을 요청한다.
             if self.restart_stream():
                 self._count_health_reconnect_failure(now)
@@ -924,10 +955,10 @@ class CameraWidget(QWidget):
         self.health_started_at = now
         self.first_frame_received = False
         self.last_health_change_time = now
-        self.last_health_frame = None
         self.freeze_same_count = 0
         self.previous_health_gray = None
         self.last_freeze_check_at = 0.0
+        self.last_health_diff = None
         self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
@@ -957,10 +988,10 @@ class CameraWidget(QWidget):
             self.health_started_at = now
             self.first_frame_received = False
             self.last_health_change_time = now
-            self.last_health_frame = None
             self.freeze_same_count = 0
             self.previous_health_gray = None
             self.last_freeze_check_at = 0.0
+            self.last_health_diff = None
             self.health_label.setText("Health: 첫 프레임 대기중")
             self.main_image_label.set_status_message("")
             self.status_label.setText("상태: 연결됨")
