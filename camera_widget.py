@@ -72,6 +72,7 @@ class CameraWidget(QWidget):
         self.background_frame_cnt = 0
         self.image_save_done = False
         self.last_health_frame = None
+        self.last_health_diff = None
         self.last_health_change_time = time.time()
         self.health_started_at = time.time()
         self.first_frame_received = False
@@ -477,6 +478,7 @@ class CameraWidget(QWidget):
         self.health_restart_in_progress = False
         self.last_health_failure_counted_at = 0.0
         self.last_health_frame = None
+        self.last_health_diff = None
         self.selected_image = None
         self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
         self.rtsp_stream.start()
@@ -801,9 +803,11 @@ class CameraWidget(QWidget):
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
             if self.last_health_frame is None:
                 self.last_health_frame = gray
+                self.last_health_diff = None
                 self.last_health_change_time = time.time()
                 return True
             diff = float(np.mean(cv2.absdiff(gray, self.last_health_frame)))
+            self.last_health_diff = diff
             self.last_health_frame = gray
             if diff > self.camera.healthcheck.freeze_diff_threshold:
                 self.last_health_change_time = time.time()
@@ -854,7 +858,26 @@ class CameraWidget(QWidget):
         reason = "프레임 수신 없음" if no_frame_timeout else "영상 변화 없음"
         self.health_label.setText(f"Health: 이상 감지 - {reason}")
         if self.last_health_error_reason != reason or now - self.last_health_error_logged_at >= 5.0:
-            self.log_error(f"HealthCheck 이상 감지: {reason}")
+            last_frame_age = now - last_ts if last_ts else None
+            state = self.rtsp_stream.state
+            state_name = state.name if hasattr(state, "name") else str(state)
+            last_health_diff = (
+                f"{self.last_health_diff:.3f}"
+                if self.last_health_diff is not None
+                else "None"
+            )
+            last_frame_age_text = f"{last_frame_age:.3f}" if last_frame_age is not None else "None"
+            self.log_error(
+                "HealthCheck 이상 감지: "
+                f"reason={reason}, "
+                f"rtsp_stream.state={state_name}, "
+                f"fps={self.rtsp_stream.get_fps():.3f}, "
+                f"frame_number={self.rtsp_stream.get_frame_number()}, "
+                f"last_frame_age={last_frame_age_text}, "
+                f"last_health_diff={last_health_diff}, "
+                f"first_frame_received={self.first_frame_received}, "
+                f"health_restart_in_progress={self.health_restart_in_progress}"
+            )
             self.last_health_error_reason = reason
             self.last_health_error_logged_at = now
 
@@ -891,6 +914,7 @@ class CameraWidget(QWidget):
         self.first_frame_received = False
         self.last_health_change_time = now
         self.last_health_frame = None
+        self.last_health_diff = None
         self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
@@ -921,6 +945,7 @@ class CameraWidget(QWidget):
             self.first_frame_received = False
             self.last_health_change_time = now
             self.last_health_frame = None
+            self.last_health_diff = None
             self.health_restart_in_progress = False
             self.health_label.setText("Health: 첫 프레임 대기중")
             self.main_image_label.set_status_message("")
