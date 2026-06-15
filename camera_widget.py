@@ -832,8 +832,9 @@ class CameraWidget(QWidget):
         if frame is None:
             return False
         try:
-            small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA)
-            current_gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
+            # HealthCheck 영상 변화 비교는 원본 프레임 해상도를 유지한다.
+            # 리사이즈로 인한 미세 변화 손실을 피하기 위해 grayscale 변환만 수행한다.
+            current_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
             if self.previous_health_gray is None or current_gray.shape != self.previous_health_gray.shape:
                 self.previous_health_gray = current_gray.copy()
                 self.last_health_diff = None
