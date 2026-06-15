@@ -48,8 +48,8 @@ cameras:
     filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
   healthcheck:
     enabled: true
-    timeout_sec: 10
-    check_interval_sec: 1
+    timeout_sec: 30
+    check_interval_sec: 5
     freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     freeze_consecutive_count: 3
@@ -80,7 +80,7 @@ cameras:
   buffer:
     size: 5
   ftp:
-    enabled: true
+    enabled: false
     host: ''
     port: 21
     username: ''
@@ -102,8 +102,8 @@ cameras:
     filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
   healthcheck:
     enabled: true
-    timeout_sec: 10
-    check_interval_sec: 1
+    timeout_sec: 30
+    check_interval_sec: 5
     freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     freeze_consecutive_count: 3
@@ -134,7 +134,7 @@ cameras:
   buffer:
     size: 5
   ftp:
-    enabled: true
+    enabled: false
     host: ''
     port: 21
     username: ''
@@ -156,8 +156,8 @@ cameras:
     filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
   healthcheck:
     enabled: true
-    timeout_sec: 10
-    check_interval_sec: 1
+    timeout_sec: 30
+    check_interval_sec: 5
     freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     freeze_consecutive_count: 3
@@ -188,7 +188,7 @@ cameras:
   buffer:
     size: 5
   ftp:
-    enabled: true
+    enabled: false
     host: ''
     port: 21
     username: ''
@@ -210,8 +210,8 @@ cameras:
     filename_format: '{equipment_no}.{mount}.{yyyyMMdd}_{hhmmss}_{seq:03d}.{ext}'
   healthcheck:
     enabled: true
-    timeout_sec: 10
-    check_interval_sec: 1
+    timeout_sec: 30
+    check_interval_sec: 5
     freeze_check_interval_sec: 180
     freeze_diff_threshold: 1.0
     freeze_consecutive_count: 3
