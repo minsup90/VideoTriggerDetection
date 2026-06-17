@@ -224,6 +224,7 @@ logging:
   log_level: INFO
   retention_days: 30
   max_file_size_mb: 10
+  ui_max_log_lines: 1000
 gui:
   window_title: Video Trigger Detection
   window_width: 1280
