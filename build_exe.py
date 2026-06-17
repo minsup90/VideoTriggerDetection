@@ -34,6 +34,8 @@ def build_exe():
         '--windowed',  # 콘솔 창 없이 실행 (GUI)
         '--manifest=app.manifest',
         '--add-data=config.yaml;.',  # 설정 파일 포함
+        '--add-data=LICENSE;.',  # 프로젝트 라이선스 포함
+        '--add-data=THIRD_PARTY_NOTICES.md;.',  # 제3자 라이브러리 고지 포함
         '--hidden-import=PyQt5',
         '--hidden-import=PyQt5.QtCore',
         '--hidden-import=PyQt5.QtGui',
@@ -92,6 +94,8 @@ def build_with_console():
         '--onedir',
         '--console',  # 콘솔 창 표시
         '--add-data=config.yaml;.',
+        '--add-data=LICENSE;.',
+        '--add-data=THIRD_PARTY_NOTICES.md;.',
         '--hidden-import=PyQt5',
         '--hidden-import=PyQt5.QtCore',
         '--hidden-import=PyQt5.QtGui',
