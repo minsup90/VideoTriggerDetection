@@ -293,6 +293,7 @@ class Config:
     log_level: str = "INFO"
     log_retention_days: int = 30
     log_max_file_size_mb: int = 10
+    ui_max_log_lines: int = 1000
 
     # GUI 설정
     window_title: str = "Video Trigger Detection"
@@ -360,7 +361,8 @@ class Config:
                 'log_dir': self.log_dir,
                 'log_level': self.log_level,
                 'retention_days': self.log_retention_days,
-                'max_file_size_mb': self.log_max_file_size_mb
+                'max_file_size_mb': self.log_max_file_size_mb,
+                'ui_max_log_lines': self.ui_max_log_lines
             },
             'gui': {
                 'window_title': self.window_title,
@@ -421,6 +423,7 @@ class Config:
             log_level=logging.get('log_level', 'INFO'),
             log_retention_days=logging.get('retention_days', 30),
             log_max_file_size_mb=logging.get('max_file_size_mb', 10),
+            ui_max_log_lines=max(1, int(logging.get('ui_max_log_lines', 1000) or 1000)),
             window_title=gui.get('window_title', 'Video Trigger Detection'),
             window_width=gui.get('window_width', 1280),
             window_height=gui.get('window_height', 720),

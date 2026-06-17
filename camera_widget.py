@@ -14,7 +14,7 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
     QScrollArea, QGridLayout, QMessageBox, QComboBox, QSpinBox,
-    QDoubleSpinBox, QTabWidget, QTextEdit, QGroupBox, QCheckBox,
+    QDoubleSpinBox, QTabWidget, QTextEdit, QPlainTextEdit, QGroupBox, QCheckBox,
     QSplitter, QLineEdit, QSizePolicy,
 )
 
@@ -139,7 +139,7 @@ class CameraWidget(QWidget):
 
     def append_log_text(self, line: str):
         if hasattr(self, 'log_text'):
-            self.log_text.append(line)
+            self.log_text.appendPlainText(line)
 
     def init_ui(self):
         layout = QHBoxLayout(self)
@@ -421,8 +421,9 @@ class CameraWidget(QWidget):
     def create_log_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        self.log_text = QTextEdit()
+        self.log_text = QPlainTextEdit()
         self.log_text.setReadOnly(True)
+        self.log_text.document().setMaximumBlockCount(self.config.ui_max_log_lines)
         layout.addWidget(self.log_text)
         return tab
 
