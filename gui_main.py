@@ -8,13 +8,88 @@ from pathlib import Path
 
 os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
 
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QPoint, Qt, QTimer
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QDialog, QDialogButtonBox, QMainWindow, QTabWidget, QTextEdit, QVBoxLayout
+from PyQt5.QtWidgets import (
+    QApplication, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QMainWindow,
+    QPushButton, QSizePolicy, QStyle, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+)
 
 from camera_widget import CameraWidget
 from config_manager import ConfigManager, CameraConfig
 from logger import Logger
+
+
+class TitleBar(QWidget):
+    """Custom title bar so the top chrome matches the app theme."""
+
+    def __init__(self, main_window: QMainWindow):
+        super().__init__(main_window)
+        self.main_window = main_window
+        self.drag_start = QPoint()
+        self.setObjectName("titleBar")
+        self.setFixedHeight(42)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 8, 0)
+        layout.setSpacing(8)
+
+        icon_label = QLabel()
+        icon_label.setObjectName("titleIcon")
+        icon = main_window.windowIcon() or main_window.style().standardIcon(QStyle.SP_ComputerIcon)
+        icon_label.setPixmap(icon.pixmap(18, 18))
+        layout.addWidget(icon_label)
+
+        self.title_label = QLabel(main_window.windowTitle())
+        self.title_label.setObjectName("titleLabel")
+        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        layout.addWidget(self.title_label)
+
+        self.minimize_btn = self._create_button("−", "최소화")
+        self.maximize_btn = self._create_button("□", "최대화/복원")
+        self.close_btn = self._create_button("×", "닫기")
+        self.close_btn.setObjectName("titleCloseButton")
+        layout.addWidget(self.minimize_btn)
+        layout.addWidget(self.maximize_btn)
+        layout.addWidget(self.close_btn)
+
+        self.minimize_btn.clicked.connect(main_window.showMinimized)
+        self.maximize_btn.clicked.connect(self.toggle_maximized)
+        self.close_btn.clicked.connect(main_window.close)
+
+    def _create_button(self, text: str, tooltip: str) -> QPushButton:
+        button = QPushButton(text)
+        button.setObjectName("titleButton")
+        button.setToolTip(tooltip)
+        button.setFixedSize(34, 28)
+        button.setFocusPolicy(Qt.NoFocus)
+        return button
+
+    def set_title(self, title: str):
+        self.title_label.setText(title)
+
+    def toggle_maximized(self):
+        if self.main_window.isMaximized():
+            self.main_window.showNormal()
+            self.maximize_btn.setText("□")
+        else:
+            self.main_window.showMaximized()
+            self.maximize_btn.setText("❐")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_start = event.globalPos() - self.main_window.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton and not self.main_window.isMaximized():
+            self.main_window.move(event.globalPos() - self.drag_start)
+            event.accept()
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.toggle_maximized()
+            event.accept()
 
 
 def resource_path(filename: str) -> Path:
@@ -50,11 +125,20 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle(self.config.window_title)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setGeometry(100, 100, self.config.window_width, self.config.window_height)
         self.setObjectName("mainWindow")
+        self.central_container = QWidget()
+        self.central_container.setObjectName("centralContainer")
+        central_layout = QVBoxLayout(self.central_container)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        self.title_bar = TitleBar(self)
+        central_layout.addWidget(self.title_bar)
         self.camera_tabs = QTabWidget()
         self.camera_tabs.setObjectName("cameraTabs")
-        self.setCentralWidget(self.camera_tabs)
+        central_layout.addWidget(self.camera_tabs, 1)
+        self.setCentralWidget(self.central_container)
         for index, camera in enumerate(self.config.cameras[:4]):
             widget = CameraWidget(index, self.config_manager, self.logger, self.restart_application, self)
             self.camera_widgets.append(widget)
@@ -206,8 +290,44 @@ def apply_app_theme(app: QApplication):
             font-size: 10.5pt;
         }
 
-        QMainWindow#mainWindow {
+        QMainWindow#mainWindow, QWidget#centralContainer {
             background: #0b1120;
+        }
+
+        QWidget#titleBar {
+            background: #1e293b;
+            border-bottom: 1px solid #38bdf8;
+        }
+
+        QLabel#titleLabel {
+            color: #f8fafc;
+            font-size: 10pt;
+            font-weight: 800;
+            padding-left: 2px;
+        }
+
+        QLabel#titleIcon {
+            background: transparent;
+        }
+
+        QPushButton#titleButton, QPushButton#titleCloseButton {
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            color: #cbd5e1;
+            font-size: 13pt;
+            font-weight: 800;
+            padding: 0;
+        }
+
+        QPushButton#titleButton:hover {
+            background: #334155;
+            color: #ffffff;
+        }
+
+        QPushButton#titleCloseButton:hover {
+            background: #ef4444;
+            color: #ffffff;
         }
 
         QMenuBar {
@@ -368,8 +488,38 @@ def apply_app_theme(app: QApplication):
         }
 
         QCheckBox {
-            spacing: 8px;
+            spacing: 10px;
             color: #dbeafe;
+            min-height: 24px;
+        }
+
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border-radius: 5px;
+            border: 2px solid #94a3b8;
+            background: #f8fafc;
+        }
+
+        QCheckBox::indicator:hover {
+            border-color: #38bdf8;
+            background: #e0f2fe;
+        }
+
+        QCheckBox::indicator:checked {
+            border-color: #22c55e;
+            background: #22c55e;
+            image: none;
+        }
+
+        QCheckBox::indicator:checked:hover {
+            border-color: #86efac;
+            background: #16a34a;
+        }
+
+        QCheckBox::indicator:disabled {
+            border-color: #475569;
+            background: #1e293b;
         }
 
         QScrollArea, QScrollArea > QWidget > QWidget {
