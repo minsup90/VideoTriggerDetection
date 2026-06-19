@@ -91,7 +91,19 @@ ftp:
 file_storage:
   save_dir: "saved_images"
   retention_days: 30
+
+# 로그 설정
+logging:
+  log_dir: logs
+  log_level: INFO
+  retention_days: 30
+  max_file_size_mb: 10
+  ui_max_log_lines: 1000
 ```
+
+로그 파일은 `logging.log_dir` 아래에 `app_YYYYMMDD.log` 형식으로 날짜별 저장됩니다.
+프로그램을 장시간 실행해도 날짜가 바뀌면 새 날짜 파일로 자동 전환되며,
+`logging.retention_days`가 지난 `app_*.log*` 파일은 시작 시와 실행 중 주기적으로 삭제됩니다.
 
 ## Windows EXE 빌드
 
