@@ -280,9 +280,16 @@ class TrayIcon:
         self.tray_icon.showMessage(title, message, QSystemTrayIcon.Information, 3000)
 
 
+def resource_path(relative_path: str) -> Path:
+    """Return a resource path that works in source and PyInstaller bundles."""
+    base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base_path / relative_path
+
+
 def apply_app_theme(app: QApplication):
     """Apply a cohesive modern dark theme to the whole desktop UI."""
-    app.setStyleSheet("""
+    checkmark_icon = resource_path("assets/checkmark-indicator.svg").as_posix()
+    stylesheet = """
         QWidget {
             background: #0f172a;
             color: #e5e7eb;
@@ -507,14 +514,14 @@ def apply_app_theme(app: QApplication):
         }
 
         QCheckBox::indicator:checked {
-            border-color: #22c55e;
-            background: #22c55e;
-            image: none;
+            border-color: #fde047;
+            background: #facc15;
+            image: url("CHECKMARK_ICON");
         }
 
         QCheckBox::indicator:checked:hover {
-            border-color: #86efac;
-            background: #16a34a;
+            border-color: #fef08a;
+            background: #fde047;
         }
 
         QCheckBox::indicator:disabled {
@@ -569,7 +576,8 @@ def apply_app_theme(app: QApplication):
             border-color: #facc15;
             background: #2a2110;
         }
-    """)
+    """
+    app.setStyleSheet(stylesheet.replace("CHECKMARK_ICON", checkmark_icon))
 
 
 def main():
