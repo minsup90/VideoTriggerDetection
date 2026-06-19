@@ -10,11 +10,18 @@ os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
 
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget
+from PyQt5.QtWidgets import QApplication, QDialog, QDialogButtonBox, QMainWindow, QTabWidget, QTextEdit, QVBoxLayout
 
 from camera_widget import CameraWidget
 from config_manager import ConfigManager, CameraConfig
 from logger import Logger
+
+
+def resource_path(filename: str) -> Path:
+    """Return path to a bundled resource in source or PyInstaller onedir mode."""
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).resolve().parent / filename
+    return Path(__file__).resolve().parent / filename
 
 
 class MainWindow(QMainWindow):
@@ -47,6 +54,51 @@ class MainWindow(QMainWindow):
             widget = CameraWidget(index, self.config_manager, self.logger, self.restart_application, self)
             self.camera_widgets.append(widget)
             self.camera_tabs.addTab(widget, camera.name or f"Cam{index + 1}")
+        self.create_menu_bar()
+
+    def create_menu_bar(self):
+        """Create the main menu bar."""
+        help_menu = self.menuBar().addMenu("도움말")
+        license_action = help_menu.addAction("라이선스 / 오픈소스 고지")
+        license_action.triggered.connect(self.show_license_dialog)
+
+    def read_notice_file(self, filename: str) -> str:
+        """Read a bundled notice file, returning a user-facing error if it is missing."""
+        path = resource_path(filename)
+        try:
+            return path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return f"{filename} 파일을 찾을 수 없습니다: {path}"
+        except OSError as exc:
+            return f"{filename} 파일을 읽을 수 없습니다: {exc}"
+
+    def show_license_dialog(self):
+        """Show project license and third-party notices."""
+        license_text = self.read_notice_file("LICENSE")
+        third_party_text = self.read_notice_file("THIRD_PARTY_NOTICES.md")
+        message = (
+            "VideoTriggerDetection 프로젝트 라이선스: GPL-3.0\n"
+            "LICENSE 파일에는 GNU General Public License v3.0 전문이 포함되어 있어야 합니다.\n"
+            "현재 배포 폴더에 포함된 LICENSE 파일 내용을 아래에 표시합니다.\n"
+            "전체 라이선스 전문은 배포 폴더에 포함된 LICENSE 파일을 참조하세요.\n\n"
+            "===== LICENSE =====\n"
+            f"{license_text}\n\n"
+            "===== THIRD_PARTY_NOTICES.md =====\n"
+            f"{third_party_text}"
+        )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("라이선스 / 오픈소스 고지")
+        dialog.resize(800, 600)
+        layout = QVBoxLayout(dialog)
+        text_edit = QTextEdit(dialog)
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(message)
+        layout.addWidget(text_edit)
+        button_box = QDialogButtonBox(QDialogButtonBox.Close, dialog)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        dialog.exec_()
 
     def apply_initial_visibility(self):
         """프로그램 시작 직후 한 번만 최소화/숨김 옵션을 적용한다."""

@@ -3,7 +3,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 
-datas = [('config.yaml', '.')]
+datas = [('config.yaml', '.'), ('LICENSE', '.'), ('THIRD_PARTY_NOTICES.md', '.')]
 binaries = []
 icon_file = Path('icon.ico')
 icon_arg = ['icon.ico'] if icon_file.exists() else None
