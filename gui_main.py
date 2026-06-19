@@ -41,6 +41,9 @@ class MainWindow(QMainWindow):
         self.camera_widgets = []
         self.app_restart_history = []
         self.initial_visibility_applied = False
+        self.log_cleanup_timer = QTimer(self)
+        self.log_cleanup_timer.timeout.connect(self.logger.cleanup_old_logs)
+        self.log_cleanup_timer.start(3600000)
         self.init_ui()
         if self.config.auto_run_detection:
             QTimer.singleShot(1500, self.start_enabled_cameras)

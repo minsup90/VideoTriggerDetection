@@ -2,12 +2,11 @@
 Logger Module
 날짜별 로그 파일 관리 및 자동 삭제 기능
 """
-import os
 import logging
 import logging.handlers
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 
 class Logger:
@@ -25,25 +24,30 @@ class Logger:
         self.retention_days = retention_days
         self.max_file_size_mb = max_file_size_mb
         self.logger: Optional[logging.Logger] = None
+        self.file_handler: Optional[logging.Handler] = None
+        self.formatter: Optional[logging.Formatter] = None
+        self.current_log_date = ""
 
         # 로그 디렉토리 생성
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # 오래된 로그 파일 삭제
-        self._cleanup_old_logs()
+        self.cleanup_old_logs()
 
         # 로거 초기화
         self._setup_logger()
 
-    def _cleanup_old_logs(self):
+    def cleanup_old_logs(self):
         """보관 기간이 지난 로그 파일 삭제"""
         if not self.log_dir.exists():
             return
 
         cutoff_date = datetime.now() - timedelta(days=self.retention_days)
 
-        for log_file in self.log_dir.glob("*.log"):
+        for log_file in self.log_dir.glob("app_*.log*"):
             try:
+                if not log_file.is_file():
+                    continue
                 # 파일 수정 시간 확인
                 file_mtime = datetime.fromtimestamp(log_file.stat().st_mtime)
                 if file_mtime < cutoff_date:
@@ -54,66 +58,111 @@ class Logger:
 
     def _setup_logger(self):
         """로거 설정"""
-        # 오늘 날짜의 로그 파일명
-        today = datetime.now().strftime("%Y%m%d")
-        log_file = self.log_dir / f"app_{today}.log"
-
         # 로거 생성
         self.logger = logging.getLogger("VideoTriggerDetection")
         self.logger.setLevel(self.log_level)
 
         # 기존 핸들러 제거
-        self.logger.handlers.clear()
-
-        # 파일 핸들러 (날짜별 로그 파일)
-        file_handler = logging.handlers.RotatingFileHandler(
-            log_file,
-            maxBytes=self.max_file_size_mb * 1024 * 1024,
-            backupCount=5,
-            encoding='utf-8'
-        )
-        file_handler.setLevel(self.log_level)
+        for handler in list(self.logger.handlers):
+            self.logger.removeHandler(handler)
+            handler.close()
 
         # 콘솔 핸들러
         console_handler = logging.StreamHandler()
         console_handler.setLevel(self.log_level)
 
         # 포맷터
-        formatter = logging.Formatter(
+        self.formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
+        console_handler.setFormatter(self.formatter)
 
         # 핸들러 추가
-        self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
+        self._replace_file_handler(datetime.now().strftime("%Y%m%d"))
+
+    def _replace_file_handler(self, log_date: str):
+        """지정 날짜의 로그 파일 핸들러로 교체"""
+        if not self.logger or not self.formatter:
+            return
+
+        if self.file_handler:
+            self.logger.removeHandler(self.file_handler)
+            self.file_handler.close()
+
+        log_file = self.log_dir / f"app_{log_date}.log"
+        self.file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=self.max_file_size_mb * 1024 * 1024,
+            backupCount=5,
+            encoding='utf-8'
+        )
+        self.file_handler.setLevel(self.log_level)
+        self.file_handler.setFormatter(self.formatter)
+        self.logger.addHandler(self.file_handler)
+        self.current_log_date = log_date
+
+    def _ensure_current_log_file(self):
+        """날짜가 바뀌면 새 날짜 로그 파일로 전환"""
+        today = datetime.now().strftime("%Y%m%d")
+        if today != self.current_log_date:
+            self._replace_file_handler(today)
+            self.cleanup_old_logs()
+
+    def update_config(
+        self,
+        log_dir: Optional[str] = None,
+        log_level: Optional[str] = None,
+        retention_days: Optional[int] = None,
+        max_file_size_mb: Optional[int] = None
+    ):
+        """로그 설정 변경사항을 실행 중 로거에 반영"""
+        needs_handler_refresh = False
+        if log_dir is not None and Path(log_dir) != self.log_dir:
+            self.log_dir = Path(log_dir)
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            needs_handler_refresh = True
+        if log_level is not None:
+            self.log_level = getattr(logging, log_level.upper(), logging.INFO)
+            if self.logger:
+                self.logger.setLevel(self.log_level)
+                for handler in self.logger.handlers:
+                    handler.setLevel(self.log_level)
+        if retention_days is not None:
+            self.retention_days = retention_days
+        if max_file_size_mb is not None and max_file_size_mb != self.max_file_size_mb:
+            self.max_file_size_mb = max_file_size_mb
+            needs_handler_refresh = True
+
+        if needs_handler_refresh:
+            self._replace_file_handler(datetime.now().strftime("%Y%m%d"))
+        self.cleanup_old_logs()
+
+    def _log(self, writer: Callable, message: str, *args, **kwargs):
+        if self.logger:
+            self._ensure_current_log_file()
+            writer(message, *args, **kwargs)
 
     def debug(self, message: str):
         """DEBUG 레벨 로그"""
-        if self.logger:
-            self.logger.debug(message)
+        self._log(self.logger.debug, message) if self.logger else None
 
     def info(self, message: str):
         """INFO 레벨 로그"""
-        if self.logger:
-            self.logger.info(message)
+        self._log(self.logger.info, message) if self.logger else None
 
     def warning(self, message: str):
         """WARNING 레벨 로그"""
-        if self.logger:
-            self.logger.warning(message)
+        self._log(self.logger.warning, message) if self.logger else None
 
     def error(self, message: str, exc_info: bool = False):
         """ERROR 레벨 로그"""
-        if self.logger:
-            self.logger.error(message, exc_info=exc_info)
+        self._log(self.logger.error, message, exc_info=exc_info) if self.logger else None
 
     def critical(self, message: str, exc_info: bool = False):
         """CRITICAL 레벨 로그"""
-        if self.logger:
-            self.logger.critical(message, exc_info=exc_info)
+        self._log(self.logger.critical, message, exc_info=exc_info) if self.logger else None
 
     def log_rtsp_status(self, connected: bool, fps: Optional[float] = None):
         """RTSP 연결 상태 로그"""
