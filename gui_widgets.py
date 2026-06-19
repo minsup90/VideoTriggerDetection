@@ -33,7 +33,7 @@ class ImageLabel(QLabel):
         self.template_callback = None
         self.image_clicked_callback = None
         self.status_message = ""
-        self.status_color = QColor(255, 80, 80)
+        self.status_color = QColor(255, 220, 80)
         self.setScaledContents(False)  # 자동 스케일링 비활성화
         self.setMinimumSize(240, 180)  # 창 축소/리사이즈 중에도 안전한 최소 크기
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -205,13 +205,18 @@ class ImageLabel(QLabel):
             if not self.status_message:
                 return
             painter.save()
-            painter.fillRect(self.rect(), QColor(0, 0, 0, 150))
+            painter.fillRect(self.rect(), QColor(2, 6, 23, 180))
             painter.setPen(self.status_color)
             font = QFont()
             font.setBold(True)
             font.setPointSize(18)
             painter.setFont(font)
-            painter.drawText(self.rect(), Qt.AlignCenter | Qt.TextWordWrap, self.status_message)
+            message_rect = self.rect().adjusted(40, 40, -40, -40)
+            painter.setBrush(QColor(15, 23, 42, 230))
+            painter.setPen(QPen(QColor(56, 189, 248), 2))
+            painter.drawRoundedRect(message_rect, 18, 18)
+            painter.setPen(self.status_color)
+            painter.drawText(message_rect.adjusted(24, 24, -24, -24), Qt.AlignCenter | Qt.TextWordWrap, self.status_message)
             painter.restore()
 
         if self.current_image is None:
@@ -241,39 +246,39 @@ class ImageLabel(QLabel):
             return screen_x, screen_y, screen_w, screen_h
 
         # ROI 영역 그리기 (녹색)
-        pen = QPen(QColor(0, 255, 0), 2)
+        pen = QPen(QColor(34, 197, 94), 2)
         painter.setPen(pen)
         for roi in self.roi_rects:
             x, y, w, h = img_to_screen(*roi)
             painter.drawRect(x, y, w, h)
 
         # Template 영역 그리기 (빨간색)
-        pen = QPen(QColor(255, 0, 0), 2)
+        pen = QPen(QColor(249, 115, 22), 2)
         painter.setPen(pen)
         for template in self.template_rects:
             x, y, w, h = img_to_screen(*template)
             painter.drawRect(x, y, w, h)
 
         # 매칭된 영역 그리기 (노란색 + 점선)
-        pen = QPen(QColor(255, 255, 0), 3)
+        pen = QPen(QColor(250, 204, 21), 3)
         pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
         for matched in self.matched_rects:
             x, y, w, h, score = matched
             screen_x, screen_y, screen_w, screen_h = img_to_screen(x, y, w, h)
             painter.drawRect(screen_x, screen_y, screen_w, screen_h)
-            painter.setPen(QColor(255, 255, 0))
+            painter.setPen(QColor(250, 204, 21))
             painter.drawText(screen_x, screen_y - 5, f"{score:.2f}")
-            pen = QPen(QColor(255, 255, 0), 3)
+            pen = QPen(QColor(250, 204, 21), 3)
             pen.setStyle(Qt.DashLine)
             painter.setPen(pen)
 
         # 현재 그리기 중인 영역 표시
         if self.drawing and self.draw_mode:
             if self.draw_mode == 'roi':
-                pen = QPen(QColor(0, 255, 0), 2, Qt.DashLine)
+                pen = QPen(QColor(34, 197, 94), 2, Qt.DashLine)
             else:
-                pen = QPen(QColor(255, 0, 255), 2, Qt.DashLine)
+                pen = QPen(QColor(56, 189, 248), 2, Qt.DashLine)
             painter.setPen(pen)
             painter.drawRect(
                 self.start_point.x(),
@@ -295,6 +300,8 @@ class ThumbnailLabel(QLabel):
         super().__init__(parent)
         self.image = image
         self.index = index
+        self.setObjectName("thumbnailLabel")
+        self.setProperty("selected", "false")
         self.setMouseTracking(True)
         self.setCursor(Qt.PointingHandCursor)
 
@@ -319,6 +326,13 @@ class ThumbnailLabel(QLabel):
             qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
             pixmap = QPixmap.fromImage(qt_image)
             self.setPixmap(pixmap)
+
+    def set_selected(self, selected: bool):
+        """Visually mark this thumbnail as selected."""
+        self.setProperty("selected", "true" if selected else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
 
     def mousePressEvent(self, event: QMouseEvent):
         """마우스 클릭 이벤트"""

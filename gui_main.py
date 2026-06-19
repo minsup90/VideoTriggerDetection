@@ -51,7 +51,9 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         self.setWindowTitle(self.config.window_title)
         self.setGeometry(100, 100, self.config.window_width, self.config.window_height)
+        self.setObjectName("mainWindow")
         self.camera_tabs = QTabWidget()
+        self.camera_tabs.setObjectName("cameraTabs")
         self.setCentralWidget(self.camera_tabs)
         for index, camera in enumerate(self.config.cameras[:4]):
             widget = CameraWidget(index, self.config_manager, self.logger, self.restart_application, self)
@@ -194,10 +196,237 @@ class TrayIcon:
         self.tray_icon.showMessage(title, message, QSystemTrayIcon.Information, 3000)
 
 
+def apply_app_theme(app: QApplication):
+    """Apply a cohesive modern dark theme to the whole desktop UI."""
+    app.setStyleSheet("""
+        QWidget {
+            background: #0f172a;
+            color: #e5e7eb;
+            font-family: "Segoe UI", "Noto Sans CJK KR", "Malgun Gothic", sans-serif;
+            font-size: 10.5pt;
+        }
+
+        QMainWindow#mainWindow {
+            background: #0b1120;
+        }
+
+        QMenuBar {
+            background: #0b1120;
+            color: #cbd5e1;
+            padding: 4px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        QMenuBar::item:selected, QMenu {
+            background: #1e293b;
+            color: #f8fafc;
+        }
+
+        QTabWidget::pane {
+            border: 1px solid #1e293b;
+            border-radius: 14px;
+            background: #111827;
+            top: -1px;
+        }
+
+        QTabBar::tab {
+            background: #111827;
+            color: #94a3b8;
+            border: 1px solid #1e293b;
+            padding: 9px 16px;
+            margin-right: 4px;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+
+        QTabBar::tab:selected {
+            background: #1e293b;
+            color: #f8fafc;
+            border-bottom-color: #38bdf8;
+        }
+
+        QTabBar::tab:hover {
+            color: #e0f2fe;
+            background: #172033;
+        }
+
+        QSplitter::handle {
+            background: #1e293b;
+            margin: 8px 3px;
+            border-radius: 3px;
+        }
+
+        QGroupBox, QFrame#previewCard, QFrame#toolbarCard {
+            background: #111827;
+            border: 1px solid #243244;
+            border-radius: 16px;
+            margin-top: 14px;
+            padding: 14px;
+        }
+
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 14px;
+            padding: 0 8px;
+            color: #7dd3fc;
+            font-weight: 700;
+        }
+
+        QLabel[role="sectionTitle"] {
+            color: #f8fafc;
+            font-size: 14pt;
+            font-weight: 800;
+        }
+
+        QLabel[role="hint"] {
+            color: #94a3b8;
+            font-size: 9.5pt;
+        }
+
+        QLabel[role="metric"] {
+            background: #172033;
+            border: 1px solid #28364a;
+            border-radius: 12px;
+            padding: 10px 12px;
+            color: #dbeafe;
+            font-weight: 650;
+        }
+
+        QLabel[role="metric"][state="ok"] {
+            color: #bbf7d0;
+            border-color: #166534;
+            background: #10251d;
+        }
+
+        QLabel[role="metric"][state="warning"] {
+            color: #fef08a;
+            border-color: #854d0e;
+            background: #2a2110;
+        }
+
+        QLabel[role="metric"][state="error"] {
+            color: #fecaca;
+            border-color: #991b1b;
+            background: #2a1114;
+        }
+
+        QLabel[role="metric"][state="idle"] {
+            color: #cbd5e1;
+            border-color: #334155;
+        }
+
+        QPushButton {
+            background: #1e293b;
+            color: #e5e7eb;
+            border: 1px solid #334155;
+            border-radius: 11px;
+            padding: 9px 13px;
+            font-weight: 700;
+        }
+
+        QPushButton:hover {
+            background: #27364b;
+            border-color: #38bdf8;
+        }
+
+        QPushButton:disabled {
+            background: #111827;
+            color: #64748b;
+            border-color: #1e293b;
+        }
+
+        QPushButton[variant="primary"] {
+            background: #0284c7;
+            border-color: #0ea5e9;
+            color: white;
+        }
+
+        QPushButton[variant="success"] {
+            background: #16a34a;
+            border-color: #22c55e;
+            color: white;
+        }
+
+        QPushButton[variant="danger"], QPushButton:checked {
+            background: #dc2626;
+            border-color: #ef4444;
+            color: white;
+        }
+
+        QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+            background: #0b1120;
+            color: #e5e7eb;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 7px 9px;
+            selection-background-color: #0ea5e9;
+        }
+
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+        QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+            border-color: #38bdf8;
+        }
+
+        QCheckBox {
+            spacing: 8px;
+            color: #dbeafe;
+        }
+
+        QScrollArea, QScrollArea > QWidget > QWidget {
+            background: transparent;
+            border: none;
+        }
+
+        QScrollBar:vertical {
+            background: #0b1120;
+            width: 11px;
+            margin: 2px;
+            border-radius: 5px;
+        }
+
+        QScrollBar::handle:vertical {
+            background: #334155;
+            border-radius: 5px;
+            min-height: 32px;
+        }
+
+        QScrollBar::handle:vertical:hover {
+            background: #475569;
+        }
+
+        QFrame#previewCard {
+            padding: 10px;
+        }
+
+        QLabel#mainImageLabel {
+            background: #020617;
+            border: 1px solid #1e293b;
+            border-radius: 14px;
+        }
+
+        QLabel#thumbnailLabel {
+            background: #020617;
+            border: 2px solid #243244;
+            border-radius: 12px;
+            padding: 4px;
+        }
+
+        QLabel#thumbnailLabel:hover {
+            border-color: #38bdf8;
+        }
+
+        QLabel#thumbnailLabel[selected="true"] {
+            border-color: #facc15;
+            background: #2a2110;
+        }
+    """)
+
+
 def main():
     """메인 함수"""
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    apply_app_theme(app)
     icon_path = Path("icon.ico")
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))

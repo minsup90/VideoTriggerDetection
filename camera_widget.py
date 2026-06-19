@@ -66,6 +66,7 @@ class CameraWidget(QWidget):
         self.is_gathering = False
         self.gathered_images = []
         self.selected_image = None
+        self.thumbnail_labels = []
         self.current_roi = None
         self.current_template = None
         self.show_roi_regions = True
@@ -141,8 +142,33 @@ class CameraWidget(QWidget):
         if hasattr(self, 'log_text'):
             self.log_text.appendPlainText(line)
 
+    def refresh_widget_style(self, widget):
+        """Refresh dynamic stylesheet properties after state changes."""
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+        widget.update()
+
+    def set_metric_state(self, label: QLabel, state: str):
+        """Apply a visual state to a metric/status label."""
+        label.setProperty("state", state)
+        self.refresh_widget_style(label)
+
+    def set_status_text(self, text: str, state: str = "idle"):
+        self.status_label.setText(text)
+        self.set_metric_state(self.status_label, state)
+
+    def set_health_text(self, text: str, state: str = "idle"):
+        self.health_label.setText(text)
+        self.set_metric_state(self.health_label, state)
+
+    def set_start_button_mode(self, running: bool):
+        self.start_stop_btn.setProperty("variant", "danger" if running else "success")
+        self.refresh_widget_style(self.start_stop_btn)
+
     def init_ui(self):
         layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
         splitter = QSplitter(Qt.Horizontal)
         layout.addWidget(splitter)
         splitter.addWidget(self.create_left_panel())
@@ -152,6 +178,7 @@ class CameraWidget(QWidget):
     def create_left_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 10, 0)
         self.inner_tab_widget = QTabWidget()
         layout.addWidget(self.inner_tab_widget)
         self.inner_tab_widget.addTab(self.create_live_tab(), "라이브")
@@ -162,19 +189,27 @@ class CameraWidget(QWidget):
     def create_live_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setSpacing(12)
+
+        title_label = QLabel(self.camera.name)
+        title_label.setProperty("role", "sectionTitle")
+        hint_label = QLabel("검출 실행, 이미지 수집, 템플릿 등록을 관리합니다.")
+        hint_label.setProperty("role", "hint")
+        layout.addWidget(title_label)
+        layout.addWidget(hint_label)
 
         control_group = QGroupBox("제어")
         control_layout = QVBoxLayout()
+        control_layout.setSpacing(9)
         self.start_stop_btn = QPushButton("START")
         self.start_stop_btn.setCheckable(True)
         self.start_stop_btn.clicked.connect(self.toggle_start_stop)
-        self.start_stop_btn.setStyleSheet("""
-            QPushButton { background-color: #4CAF50; color: white; font-size: 14px; padding: 10px; }
-            QPushButton:checked { background-color: #f44336; }
-        """)
+        self.start_stop_btn.setProperty("variant", "success")
+        self.start_stop_btn.setMinimumHeight(44)
         control_layout.addWidget(self.start_stop_btn)
 
         self.gather_btn = QPushButton("이미지 수집")
+        self.gather_btn.setProperty("variant", "primary")
         self.gather_btn.clicked.connect(self.start_image_gathering)
         control_layout.addWidget(self.gather_btn)
 
@@ -189,15 +224,20 @@ class CameraWidget(QWidget):
         layout.addWidget(control_group)
 
         status_group = QGroupBox("상태")
-        status_layout = QVBoxLayout()
+        status_layout = QGridLayout()
+        status_layout.setSpacing(8)
         self.status_label = QLabel("상태: 대기중")
         self.fps_label = QLabel("FPS: 0.0")
         self.buffer_label = QLabel("버퍼: 0/0")
         self.health_label = QLabel("Health: 대기중")
-        status_layout.addWidget(self.status_label)
-        status_layout.addWidget(self.fps_label)
-        status_layout.addWidget(self.buffer_label)
-        status_layout.addWidget(self.health_label)
+        for label in (self.status_label, self.fps_label, self.buffer_label, self.health_label):
+            label.setProperty("role", "metric")
+        self.set_metric_state(self.status_label, "idle")
+        self.set_metric_state(self.health_label, "idle")
+        status_layout.addWidget(self.status_label, 0, 0)
+        status_layout.addWidget(self.fps_label, 0, 1)
+        status_layout.addWidget(self.buffer_label, 1, 0)
+        status_layout.addWidget(self.health_label, 1, 1)
         status_group.setLayout(status_layout)
         layout.addWidget(status_group)
 
@@ -207,6 +247,7 @@ class CameraWidget(QWidget):
         self.thumbnail_scroll.setWidgetResizable(True)
         self.thumbnail_widget = QWidget()
         self.thumbnail_layout = QGridLayout(self.thumbnail_widget)
+        self.thumbnail_layout.setSpacing(8)
         self.thumbnail_scroll.setWidget(self.thumbnail_widget)
         thumbnail_layout.addWidget(self.thumbnail_scroll)
         thumbnail_group.setLayout(thumbnail_layout)
@@ -413,8 +454,9 @@ class CameraWidget(QWidget):
         outer_layout.addWidget(scroll_area)
 
         save_btn = QPushButton("설정 저장")
+        save_btn.setProperty("variant", "primary")
         save_btn.clicked.connect(self.save_config)
-        save_btn.setMinimumHeight(36)
+        save_btn.setMinimumHeight(42)
         outer_layout.addWidget(save_btn)
         return tab
 
@@ -430,11 +472,23 @@ class CameraWidget(QWidget):
     def create_right_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        self.main_image_label = ImageLabel()
-        self.main_image_label.setAlignment(Qt.AlignCenter)
-        self.main_image_label.setStyleSheet("border: 2px solid #333; background-color: #000;")
-        layout.addWidget(self.main_image_label)
+        layout.setContentsMargins(10, 0, 0, 0)
+        layout.setSpacing(12)
 
+        preview_card = QFrame()
+        preview_card.setObjectName("previewCard")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_image_label = ImageLabel()
+        self.main_image_label.setObjectName("mainImageLabel")
+        self.main_image_label.setAlignment(Qt.AlignCenter)
+        preview_layout.addWidget(self.main_image_label)
+        layout.addWidget(preview_card, 1)
+
+        toolbar_card = QFrame()
+        toolbar_card.setObjectName("toolbarCard")
+        toolbar_layout = QVBoxLayout(toolbar_card)
+        toolbar_layout.setSpacing(10)
         index_layout = QHBoxLayout()
         index_layout.addWidget(QLabel("템플릿 인덱스:"))
         self.template_index_spin = QSpinBox()
@@ -444,23 +498,29 @@ class CameraWidget(QWidget):
         self.template_index_spin.setFixedWidth(80)
         index_layout.addWidget(self.template_index_spin)
         index_layout.addStretch()
-        layout.addLayout(index_layout)
+        toolbar_layout.addLayout(index_layout)
 
         control_layout = QHBoxLayout()
+        control_layout.setSpacing(8)
         self.roi_btn = QPushButton("ROI 설정")
         self.roi_btn.setCheckable(True)
+        self.roi_btn.setProperty("variant", "primary")
         self.roi_btn.clicked.connect(self.toggle_roi_mode)
         control_layout.addWidget(self.roi_btn)
         self.template_btn = QPushButton("Template 설정")
         self.template_btn.setCheckable(True)
+        self.template_btn.setProperty("variant", "primary")
         self.template_btn.clicked.connect(self.toggle_template_mode)
         control_layout.addWidget(self.template_btn)
         self.clear_btn = QPushButton("영역 지우기")
+        self.clear_btn.setProperty("variant", "danger")
         self.clear_btn.clicked.connect(self.clear_regions)
         control_layout.addWidget(self.clear_btn)
-        layout.addLayout(control_layout)
+        toolbar_layout.addLayout(control_layout)
         self.pattern_info_label = QLabel("현재 패턴: 없음")
-        layout.addWidget(self.pattern_info_label)
+        self.pattern_info_label.setProperty("role", "hint")
+        toolbar_layout.addWidget(self.pattern_info_label)
+        layout.addWidget(toolbar_card)
         return panel
 
     def setup_callbacks(self):
@@ -495,6 +555,7 @@ class CameraWidget(QWidget):
             return
         self.is_running = True
         self.start_stop_btn.setText("STOP")
+        self.set_start_button_mode(True)
         self.rtsp_stream.rtsp_url = self.camera.rtsp_url
         self.rtsp_stream.reconnect_interval = self.camera.rtsp_reconnect_interval
         now = time.time()
@@ -512,18 +573,19 @@ class CameraWidget(QWidget):
         self.main_image_label.set_status_message("RTSP 연결 중...", QColor(255, 220, 80))
         self.rtsp_stream.start()
         self.log_info("검출 시작")
-        self.status_label.setText("상태: 실행중")
+        self.set_status_text("상태: 실행중", "ok")
 
     def stop_detection(self):
         self.is_running = False
         self.start_stop_btn.setChecked(False)
         self.start_stop_btn.setText("START")
+        self.set_start_button_mode(False)
         self.health_restart_in_progress = False
         self.rtsp_stream.stop()
         self.main_image_label.set_status_message("")
         self.log_info("검출 중지")
-        self.status_label.setText("상태: 대기중")
-        self.health_label.setText("Health: 대기중")
+        self.set_status_text("상태: 대기중", "idle")
+        self.set_health_text("Health: 대기중", "idle")
 
     def start_image_gathering(self):
         if self.is_gathering:
@@ -590,6 +652,7 @@ class CameraWidget(QWidget):
         self.show_thumbnails()
 
     def show_thumbnails(self):
+        self.thumbnail_labels = []
         for i in reversed(range(self.thumbnail_layout.count())):
             widget = self.thumbnail_layout.itemAt(i).widget()
             if widget:
@@ -599,10 +662,13 @@ class CameraWidget(QWidget):
             thumbnail = ThumbnailLabel(img_data['frame'], i)
             thumbnail.clicked.connect(lambda idx=i: self.select_image(idx))
             self.thumbnail_layout.addWidget(thumbnail, i // cols, i % cols)
+            self.thumbnail_labels.append(thumbnail)
 
     def select_image(self, index: int):
         if 0 <= index < len(self.gathered_images):
             self.selected_image = self.gathered_images[index]['frame']
+            for thumbnail in self.thumbnail_labels:
+                thumbnail.set_selected(thumbnail.index == index)
             self.main_image_label.set_status_message("")
             self.main_image_label.set_image(self.selected_image)
             self.main_image_label.set_roi_rects([])
@@ -886,18 +952,18 @@ class CameraWidget(QWidget):
 
         if in_startup_grace:
             if reconnect_or_restart_pending:
-                self.health_label.setText("Health: RTSP 재연결 중")
+                self.set_health_text("Health: RTSP 재연결 중", "warning")
             else:
-                self.health_label.setText("Health: 첫 프레임 대기중")
+                self.set_health_text("Health: 첫 프레임 대기중", "warning")
             return
 
         if reconnect_or_restart_pending:
-            self.health_label.setText("Health: RTSP 재연결 중")
+            self.set_health_text("Health: RTSP 재연결 중", "warning")
 
         if not reconnect_or_restart_pending and not no_frame_timeout and not freeze_timeout:
             self.consecutive_health_failures = 0
             self.last_health_failure_counted_at = 0.0
-            self.health_label.setText("Health: 정상")
+            self.set_health_text("Health: 정상", "ok")
             self.last_health_error_reason = None
             self.last_health_error_logged_at = 0.0
             return
@@ -906,7 +972,7 @@ class CameraWidget(QWidget):
             return
 
         reason = "프레임 수신 없음" if no_frame_timeout else "영상 변화 없음"
-        self.health_label.setText(f"Health: 이상 감지 - {reason}")
+        self.set_health_text(f"Health: 이상 감지 - {reason}", "error")
         if self.last_health_error_reason != reason or now - self.last_health_error_logged_at >= 5.0:
             last_frame_age = now - last_ts if last_ts else None
             state = self.rtsp_stream.state
@@ -973,7 +1039,7 @@ class CameraWidget(QWidget):
         self.health_restart_in_progress = True
         self.stream_restart_history = [t for t in self.stream_restart_history if now - t < 3600]
         self.stream_restart_history.append(now)
-        self.health_label.setText("Health: RTSP 재연결 중")
+        self.set_health_text("Health: RTSP 재연결 중", "warning")
         self.log_info("RTSP 재연결 시도")
         self.rtsp_stream.request_restart()
         return True
@@ -1002,7 +1068,7 @@ class CameraWidget(QWidget):
 
     def on_rtsp_error(self, error_msg: str):
         self.log_error(f"RTSP 오류: {error_msg}")
-        self.status_label.setText(f"상태: 오류 - {error_msg}")
+        self.set_status_text(f"상태: 오류 - {error_msg}", "error")
 
     def on_rtsp_state_change(self, state: StreamState):
         now = time.time()
@@ -1022,21 +1088,21 @@ class CameraWidget(QWidget):
             self.previous_health_gray = None
             self.last_freeze_check_at = 0.0
             self.last_health_diff = None
-            self.health_label.setText("Health: 첫 프레임 대기중")
+            self.set_health_text("Health: 첫 프레임 대기중", "warning")
             self.main_image_label.set_status_message("")
-            self.status_label.setText("상태: 연결됨")
+            self.set_status_text("상태: 연결됨", "ok")
         elif state == StreamState.DISCONNECTED:
-            self.health_label.setText("Health: RTSP 재연결 중")
+            self.set_health_text("Health: RTSP 재연결 중", "warning")
             self.main_image_label.set_status_message("RTSP 재연결 중", QColor(255, 220, 80))
-            self.status_label.setText("상태: RTSP 재연결 중")
+            self.set_status_text("상태: RTSP 재연결 중", "warning")
         elif state == StreamState.CONNECTING:
-            self.health_label.setText("Health: RTSP 재연결 중")
+            self.set_health_text("Health: RTSP 재연결 중", "warning")
             self.main_image_label.set_status_message("RTSP 재연결 중", QColor(255, 220, 80))
-            self.status_label.setText("상태: RTSP 재연결 중")
+            self.set_status_text("상태: RTSP 재연결 중", "warning")
         elif state == StreamState.ERROR:
-            self.health_label.setText("Health: RTSP 재연결 중")
+            self.set_health_text("Health: RTSP 재연결 중", "warning")
             self.main_image_label.set_status_message("RTSP 재연결 중", QColor(255, 220, 80))
-            self.status_label.setText("상태: RTSP 재연결 중")
+            self.set_status_text("상태: RTSP 재연결 중", "warning")
 
     def on_ftp_upload(self, filepath: str, success: bool, error: Optional[str]):
         self.logger.log_ftp_upload(filepath, success, error)
