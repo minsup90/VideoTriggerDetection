@@ -494,6 +494,56 @@ def apply_app_theme(app: QApplication):
             border-color: #38bdf8;
         }
 
+        QSpinBox, QDoubleSpinBox {
+            padding-right: 34px;
+        }
+
+        QSpinBox::up-button, QDoubleSpinBox::up-button,
+        QSpinBox::down-button, QDoubleSpinBox::down-button {
+            subcontrol-origin: border;
+            width: 28px;
+            background: #334155;
+            border-left: 1px solid #64748b;
+        }
+
+        QSpinBox::up-button, QDoubleSpinBox::up-button {
+            subcontrol-position: top right;
+            border-top-right-radius: 9px;
+            border-bottom: 1px solid #64748b;
+        }
+
+        QSpinBox::down-button, QDoubleSpinBox::down-button {
+            subcontrol-position: bottom right;
+            border-bottom-right-radius: 9px;
+        }
+
+        QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+        QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+            background: #0ea5e9;
+            border-left-color: #7dd3fc;
+        }
+
+        QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+        QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
+            background: #0369a1;
+        }
+
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 7px solid #f8fafc;
+        }
+
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 7px solid #f8fafc;
+        }
+
         QCheckBox {
             spacing: 10px;
             color: #dbeafe;
