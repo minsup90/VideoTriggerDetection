@@ -12,7 +12,7 @@ from PyQt5.QtCore import QPoint, Qt, QTimer
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QApplication, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QMainWindow,
-    QPushButton, QSizePolicy, QStyle, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QMenuBar, QPushButton, QSizePolicy, QStyle, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from camera_widget import CameraWidget
@@ -135,6 +135,8 @@ class MainWindow(QMainWindow):
         central_layout.setSpacing(0)
         self.title_bar = TitleBar(self)
         central_layout.addWidget(self.title_bar)
+        self.app_menu_bar = self.create_menu_bar()
+        central_layout.addWidget(self.app_menu_bar)
         self.camera_tabs = QTabWidget()
         self.camera_tabs.setObjectName("cameraTabs")
         central_layout.addWidget(self.camera_tabs, 1)
@@ -143,13 +145,15 @@ class MainWindow(QMainWindow):
             widget = CameraWidget(index, self.config_manager, self.logger, self.restart_application, self)
             self.camera_widgets.append(widget)
             self.camera_tabs.addTab(widget, camera.name or f"Cam{index + 1}")
-        self.create_menu_bar()
 
-    def create_menu_bar(self):
-        """Create the main menu bar."""
-        help_menu = self.menuBar().addMenu("도움말")
+    def create_menu_bar(self) -> QMenuBar:
+        """Create the main menu bar directly below the custom title bar."""
+        menu_bar = QMenuBar(self.central_container)
+        menu_bar.setNativeMenuBar(False)
+        help_menu = menu_bar.addMenu("도움말")
         license_action = help_menu.addAction("라이선스 / 오픈소스 고지")
         license_action.triggered.connect(self.show_license_dialog)
+        return menu_bar
 
     def read_notice_file(self, filename: str) -> str:
         """Read a bundled notice file, returning a user-facing error if it is missing."""
@@ -495,53 +499,61 @@ def apply_app_theme(app: QApplication):
         }
 
         QSpinBox, QDoubleSpinBox {
-            padding-right: 34px;
+            min-height: 24px;
+            padding: 7px 42px 7px 10px;
+            font-weight: 650;
         }
 
         QSpinBox::up-button, QDoubleSpinBox::up-button,
         QSpinBox::down-button, QDoubleSpinBox::down-button {
             subcontrol-origin: border;
-            width: 28px;
-            background: #334155;
-            border-left: 1px solid #64748b;
+            width: 34px;
+            margin: 3px 3px 3px 0;
+            background: #1e293b;
+            border: 1px solid #475569;
         }
 
         QSpinBox::up-button, QDoubleSpinBox::up-button {
             subcontrol-position: top right;
-            border-top-right-radius: 9px;
-            border-bottom: 1px solid #64748b;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            border-bottom: none;
         }
 
         QSpinBox::down-button, QDoubleSpinBox::down-button {
             subcontrol-position: bottom right;
-            border-bottom-right-radius: 9px;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
         }
 
         QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
         QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
             background: #0ea5e9;
-            border-left-color: #7dd3fc;
+            border-color: #7dd3fc;
         }
 
         QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
         QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
             background: #0369a1;
+            border-color: #38bdf8;
         }
 
         QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+            image: none;
             width: 0;
             height: 0;
             border-left: 5px solid transparent;
             border-right: 5px solid transparent;
-            border-bottom: 7px solid #f8fafc;
+            border-bottom: 6px solid #e0f2fe;
         }
 
         QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+            image: none;
             width: 0;
             height: 0;
             border-left: 5px solid transparent;
             border-right: 5px solid transparent;
-            border-top: 7px solid #f8fafc;
+            border-top: 6px solid #e0f2fe;
         }
 
         QCheckBox {
